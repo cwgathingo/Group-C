@@ -12,7 +12,7 @@ WorldInfo {
 }
 Viewpoint {
   orientation -0.593029167020117 0.5917464092945832 0.5460335100984128 2.1397846515477195
-  position 0.006224230743154648 0.053580811738103334 0.9486861976389551
+  position 0.006691077471925639 0.03791465622714529 0.7534607367531094
 }
 TexturedBackground {
 }
@@ -20,7 +20,7 @@ E-puck {
   translation 0.15 -0.15 0
   rotation 0 0 1 1.5707996938995747
   name "e-puck-maze"
-  controller "e-puck-maze"
+  controller "e_puck_maze"
   distance_sensor_numberOfRays 2
   turretSlot [
     Compass {

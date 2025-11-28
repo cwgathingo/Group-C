@@ -199,24 +199,21 @@ class Maze:
         return None
 
     """
-    Get all neighbouring cells around a cell.
+    Get neighbour cells in each cardinal direction.
 
-    The neighbours are returned in the fixed order:
-    [NORTH, EAST, SOUTH, WEST].
-
-    For each direction, the list contains either the neighbouring cell
-    (row, col) if it is inside the maze bounds, or None otherwise.
+    Returns a dictionary mapping each Direction to either the neighbour cell,
+    or None if moving in that direction would leave the maze.
 
     @param cell Cell to query (row, col).
-    @return List of 4 neighbours in order [NORTH, EAST, SOUTH, WEST].
+    @return Dictionary: {Direction: Optional[Cell]}
     """
-    def getNeighbours(self, cell: Cell) -> List[Optional[Cell]]:
-        return [
-            self.getNeighbour(cell, Direction.NORTH),
-            self.getNeighbour(cell, Direction.EAST),
-            self.getNeighbour(cell, Direction.SOUTH),
-            self.getNeighbour(cell, Direction.WEST),
-        ]
+    def getNeighbours(self, cell: Cell) -> Dict[Direction, Optional[Cell]]:
+        return {
+            Direction.NORTH: self.getNeighbour(cell, Direction.NORTH),
+            Direction.EAST:  self.getNeighbour(cell, Direction.EAST),
+            Direction.SOUTH: self.getNeighbour(cell, Direction.SOUTH),
+            Direction.WEST:  self.getNeighbour(cell, Direction.WEST),
+        }
     
     """
     Get the opposite of a given direction.
@@ -257,16 +254,25 @@ class Maze:
 
         # Neighbour is outside the maze bounds
         if nCell is None:
-            print('Warning: Trying to set out of bound passage from cell:', cell, 'direction:', direction, '\nExiting')
+            print(
+                "Warning: ignoring markPassageState for out-of-bounds passage "
+                "from cell", cell, "direction", direction
+            )
             return
 
         (row, col) = cell
         (nRow, nCol) = nCell
+        currentState = self._passages[row][col][direction]
 
         # Do not overwrite an already-known passage
-        if self._passages[row][col][direction] != PassageState.UNKNOWN:
-            print('Warning: Trying to set a passage that has already been set:',
-                cell, direction, self._passages[row][col][direction], '\nExiting')
+        if currentState != PassageState.UNKNOWN:
+            print(
+                "Warning: ignoring markPassageState; passage already known.",
+                "cell", cell,
+                "direction", direction,
+                "current state", currentState,
+                "requested state", passageState
+            )
             return
 
         # Update this passage
@@ -283,23 +289,113 @@ class Maze:
 
     @param cell Cell to mark visited (row, col).
     """
-    def mark_visited(self, cell: Cell) -> None:
+    def markVisited(self, cell: Cell) -> None:
         (row, col) = cell
         self._visited[row][col] = True
 
     # ---------- ASCII export ----------
 
     """
-    Export the current maze belief as an ASCII map.
+    Export the robot’s current maze belief as an ASCII map.
 
-    Layout:
-    - Each maze cell is rendered as a 5x3 block of characters.
-    - The borders of the block reflect the PassageState values:
-      UNKNOWN, OPEN, or BLOCKED.
-    - The block centre shows:
-      'S' for start, 'G' for goal, 'V' for visited, '?' for unvisited.
+    Each maze cell is rendered as a fixed 3-row block showing its four
+    surrounding passages and whether the cell has been visited.
 
-    @return List of strings, each string is a row of the ASCII map.
+    Passage encoding:
+        '1' = BLOCKED
+        '0' = OPEN
+        '?' = UNKNOWN
+
+    Cell centre:
+        'V' = visited
+        '?' = unvisited
+
+    The function returns a list of text lines. Use printAsciiMap() to
+    print them directly.
+
+    @return List of strings forming the ASCII map.
     """
-    def export_ascii_map(self) -> List[str]:
-        pass
+    def exportAsciiMap(self) -> List[str]:
+        asciiRows: List[str] = []
+
+        for r in range(self._rows):
+            rowTop = ""
+            rowMiddle = ""
+            rowBottom = ""
+
+            for c in range(self._cols):
+
+                # Determine centre character
+                if self._visited[r][c]:
+                    centre = 'V'
+                else:
+                    centre = '?'
+
+                # Convert passage states to characters for each direction
+                # NORTH
+                northState = self._passages[r][c][Direction.NORTH]
+                if northState == PassageState.BLOCKED:
+                    north = '1'
+                elif northState == PassageState.OPEN:
+                    north = '0'
+                else:
+                    north = '?'
+
+                # EAST
+                eastState = self._passages[r][c][Direction.EAST]
+                if eastState == PassageState.BLOCKED:
+                    east = '1'
+                elif eastState == PassageState.OPEN:
+                    east = '0'
+                else:
+                    east = '?'
+
+                # SOUTH
+                southState = self._passages[r][c][Direction.SOUTH]
+                if southState == PassageState.BLOCKED:
+                    south = '1'
+                elif southState == PassageState.OPEN:
+                    south = '0'
+                else:
+                    south = '?'
+
+                # WEST
+                westState = self._passages[r][c][Direction.WEST]
+                if westState == PassageState.BLOCKED:
+                    west = '1'
+                elif westState == PassageState.OPEN:
+                    west = '0'
+                else:
+                    west = '?'
+
+                # Build the cell’s ASCII block
+                # "  N   "
+                rowTop += "  " + north + "    "
+
+                # "W C E "
+                rowMiddle += west + " " + centre + " " + east + "  "
+
+                # "  S   "
+                rowBottom += "  " + south + "    "
+
+            # Append the three lines for this maze row and a blank separator
+            asciiRows.append(rowTop)
+            asciiRows.append(rowMiddle)
+            asciiRows.append(rowBottom)
+            asciiRows.append("")
+
+        return asciiRows
+    
+    """
+    Print the current ASCII map of the maze belief to the console.
+
+    This method calls exportAsciiMap() to generate the ASCII
+    representation, then prints each line to standard output.
+    It is intended for debugging and demonstration purposes.
+
+    @return None
+    """
+    def printAsciiMap(self) -> None:
+        asciiRows = self.exportAsciiMap()
+        for row in asciiRows:
+            print(row)

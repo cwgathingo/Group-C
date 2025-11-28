@@ -80,12 +80,12 @@ def testNeighbours() -> None:
     assert maze.getNeighbour((0, 0), Direction.NORTH) is None
     assert maze.getNeighbour((0, 0), Direction.WEST) is None
 
-    # getNeighbours order and contents
+    # getNeighbours contents (dict) 
     neighbours = maze.getNeighbours((1, 1))
-    assert neighbours[0] == (0, 1)   # NORTH
-    assert neighbours[1] == (1, 2)   # EAST
-    assert neighbours[2] == (2, 1)   # SOUTH
-    assert neighbours[3] == (1, 0)   # WEST
+    assert neighbours[Direction.NORTH] == (0, 1)
+    assert neighbours[Direction.EAST] == (1, 2)
+    assert neighbours[Direction.SOUTH] == (2, 1)
+    assert neighbours[Direction.WEST] == (1, 0)
 
     print("Neighbour tests passed.")
 
@@ -142,7 +142,7 @@ def testVisited() -> None:
 
     target: Cell = (2, 3)
     assert maze.isVisited(target) is False
-    maze.mark_visited(target)
+    maze.markVisited(target)
     assert maze.isVisited(target) is True
 
     print("Visited cell tests passed.")
