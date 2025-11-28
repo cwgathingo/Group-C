@@ -1,0 +1,91 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/gctronic/e-puck/protos/E-puck.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/apartment_structure/protos/Wall.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/Floor.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/appearances/protos/Parquetry.proto"
+
+WorldInfo {
+}
+Viewpoint {
+  orientation -0.593029167020117 0.5917464092945832 0.5460335100984128 2.1397846515477195
+  position 0.006224230743154648 0.053580811738103334 0.9486861976389551
+}
+TexturedBackground {
+}
+E-puck {
+  translation 0.15 -0.15 0
+  rotation 0 0 1 1.5707996938995747
+  name "e-puck-maze"
+  controller "e-puck-maze"
+  distance_sensor_numberOfRays 2
+  turretSlot [
+    Compass {
+    }
+    GPS {
+    }
+  ]
+}
+TexturedBackgroundLight {
+}
+RectangleArena {
+  floorSize 0.4 0.4
+  floorTileSize 0.2 0.2
+  wallHeight 0.05
+}
+Wall {
+  translation -0.1 -0.05 0
+  size 0.01 0.3 0.1
+}
+Wall {
+  translation 0.1 -0.155 0
+  name "wall(1)"
+  size 0.01 0.115 0.1
+}
+Wall {
+  translation 0.1 0.05 0
+  name "wall(3)"
+  size 0.01 0.1 0.1
+}
+Wall {
+  translation 0 -0.05 0
+  name "wall(2)"
+  size 0.01 0.1 0.1
+}
+Wall {
+  translation 0 0.15 0
+  name "wall(4)"
+  size 0.01 0.1 0.1
+}
+Wall {
+  translation 0.05 -0.1 0
+  name "wall(5)"
+  size 0.1 0.01 0.1
+}
+Wall {
+  translation 0.05 0.1 0
+  name "wall(6)"
+  size 0.1 0.01 0.1
+}
+Floor {
+  translation 0.15 -0.15 0
+  size 0.08 0.08
+  tileSize 0.05 0.05
+  appearance Parquetry {
+    type "chequered"
+    colorOverride 1 0 0.0156863
+  }
+}
+Floor {
+  translation -0.15 -0.15 0
+  name "floor(1)"
+  size 0.08 0.08
+  tileSize 0.05 0.05
+  appearance Parquetry {
+    type "chequered"
+    colorOverride 0 1 0.0823529
+  }
+}
