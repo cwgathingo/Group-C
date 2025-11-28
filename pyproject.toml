@@ -1,6 +1,6 @@
 [project]
 name = "maze solver"
-version = "0.1.0"
+version = "0.2.0"
 description = ""
 authors = [
     {name = "Aviv Shaked",email = "shaked.aviv1@gmail.com"}
