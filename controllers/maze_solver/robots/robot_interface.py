@@ -13,6 +13,8 @@ Represents the type of atomic motion the robot can execute.
 
 These actions are defined in maze/maze coordinates, not raw Webots units.
 """
+
+
 class MotionAction(Enum):
     MOVE_FORWARD_ONE_CELL = auto()
     TURN_LEFT_90 = auto()
@@ -22,6 +24,8 @@ class MotionAction(Enum):
 """
 Represents the outcome of the most recently completed atomic action.
 """
+
+
 class ActionResult(Enum):
     SUCCESS = auto()
     FAILED = auto()
@@ -36,16 +40,19 @@ High-level state of the robot facade.
 This is a coarse summary used by MazeController to reason about what the
 robot is currently doing.
 """
+
+
 class RobotState(Enum):
     IDLE = auto()
     EXECUTING_ACTION = auto()
     ERROR = auto()
 
+
 directionUnit = {
     Direction.NORTH: (0.0, +1.0),
-    Direction.EAST:  (+1.0, 0.0),
+    Direction.EAST: (+1.0, 0.0),
     Direction.SOUTH: (0.0, -1.0),
-    Direction.WEST:  (-1.0, 0.0),
+    Direction.WEST: (-1.0, 0.0),
 }
 
 """
@@ -66,8 +73,9 @@ Implementations are expected to:
 - Respect tolerances when deciding that an action has completed.
 - Stop the motors when no action is being executed.
 """
-class RobotFacade(ABC):
 
+
+class RobotFacade(ABC):
     """
     Advance the internal control loop by one timestep.
 
@@ -81,6 +89,7 @@ class RobotFacade(ABC):
 
     @param timeStepSeconds Duration of this timestep in seconds.
     """
+
     @abstractmethod
     def update(self, timeStepSeconds: float) -> None:
         raise NotImplementedError
@@ -94,6 +103,7 @@ class RobotFacade(ABC):
 
     @return Current cell as (row, col).
     """
+
     @abstractmethod
     def getCurrentCell(self) -> Cell:
         raise NotImplementedError
@@ -106,6 +116,7 @@ class RobotFacade(ABC):
 
     @return Tuple (hx, hy) representing a unit heading vector.
     """
+
     @abstractmethod
     def getHeadingVector(self) -> Vec2:
         raise NotImplementedError
@@ -119,6 +130,7 @@ class RobotFacade(ABC):
 
     @return Direction enum value representing the maze heading.
     """
+
     @abstractmethod
     def getHeadingDirection(self) -> Direction:
         raise NotImplementedError
@@ -143,6 +155,7 @@ class RobotFacade(ABC):
     either ignore the request or treat it as an error; this behaviour should
     be documented in the concrete implementation.
     """
+
     @abstractmethod
     def requestMoveForwardOneCell(self) -> None:
         raise NotImplementedError
@@ -158,6 +171,7 @@ class RobotFacade(ABC):
 
     Completion and result are obtained via the status methods.
     """
+
     @abstractmethod
     def requestTurnLeft90(self) -> None:
         raise NotImplementedError
@@ -173,6 +187,7 @@ class RobotFacade(ABC):
 
     Completion and result are obtained via the status methods.
     """
+
     @abstractmethod
     def requestTurnRight90(self) -> None:
         raise NotImplementedError
@@ -186,6 +201,7 @@ class RobotFacade(ABC):
 
     @return RobotState.IDLE, RobotState.EXECUTING_ACTION, or RobotState.ERROR.
     """
+
     @abstractmethod
     def getState(self) -> RobotState:
         raise NotImplementedError
@@ -198,6 +214,7 @@ class RobotFacade(ABC):
     @return True if an atomic action is in progress, False if the robot is idle
             or in an error state.
     """
+
     @abstractmethod
     def isBusy(self) -> bool:
         raise NotImplementedError
@@ -209,6 +226,7 @@ class RobotFacade(ABC):
 
     @return MotionAction for the ongoing action, or None if idle.
     """
+
     @abstractmethod
     def getCurrentAction(self) -> Optional[MotionAction]:
         raise NotImplementedError
@@ -226,8 +244,19 @@ class RobotFacade(ABC):
 
     @return ActionResult enum indicating the last completed action's outcome.
     """
+
     @abstractmethod
     def getLastActionResult(self) -> ActionResult:
+        raise NotImplementedError
+
+    """
+    gets a mapping Direction -> has_wall (True/False) for
+    the directions that sensors can see from the current pose.
+    @return  Direction -> Optional[bool], where True=wall, None=unknown.
+    """
+
+    @abstractmethod
+    def senseLocalPassages(self) -> dict[Direction, Optional[bool]]:
         raise NotImplementedError
 
     # ------------------------------------------------------------------
@@ -244,6 +273,7 @@ class RobotFacade(ABC):
 
     If no action is in progress, this should be a no-op.
     """
+
     @abstractmethod
     def cancelAction(self) -> None:
         raise NotImplementedError
@@ -259,6 +289,7 @@ class RobotFacade(ABC):
     @param cell Starting cell as (row, col).
     @param direction Initial heading as a Direction.
     """
+
     @abstractmethod
     def resetPose(self, cell: Cell, direction: Direction) -> None:
         raise NotImplementedError
@@ -283,6 +314,7 @@ class RobotFacade(ABC):
 
     @return Tuple (x, y, theta) or None if unsupported.
     """
+
     def getWorldPose(self) -> Optional[Pose2D]:
         return None
 
@@ -296,5 +328,6 @@ class RobotFacade(ABC):
 
     @return Tuple (x, y) or None if unsupported.
     """
+
     def getWorldPosition(self) -> Optional[Tuple[float, float]]:
         return None

@@ -39,7 +39,8 @@ def demoLargerMaze():
     maze.markVisited((1, 2))
     maze.markVisited((2, 2))
 
-    maze.printAsciiMap()  
+    maze.printAsciiMap()
+
 
 def demoFourByFourPath() -> None:
     print("=== 4x4 Maze with step-by-step robot movement and local sensing ===")
@@ -47,12 +48,7 @@ def demoFourByFourPath() -> None:
     maze = Maze(4, 4, (0, 0), (3, 3))
 
     # Robot path:
-    path = [
-        (0, 0),
-        (0, 1),
-        (1, 1),
-        (2, 1)
-    ]
+    path = [(0, 0), (0, 1), (1, 1), (2, 1)]
 
     # Ground-truth blocked passages (world model).
     # These are *real* walls in the environment, but the Maze only learns
@@ -71,7 +67,12 @@ def demoFourByFourPath() -> None:
 
     # Only set walls the robot can currently sense (BLOCKED only).
     def senseAt(cell):
-        for direction in [Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST]:
+        for direction in [
+            Direction.NORTH,
+            Direction.EAST,
+            Direction.SOUTH,
+            Direction.WEST,
+        ]:
             neighbour = maze.getNeighbour(cell, direction)
             if neighbour is None:
                 # Outer border is already BLOCKED by Maze.__init__, no need to set.
@@ -120,4 +121,3 @@ if __name__ == "__main__":
     demoLargerMaze()
     print("\n")
     demoFourByFourPath()
-

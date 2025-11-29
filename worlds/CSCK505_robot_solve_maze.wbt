@@ -9,8 +9,8 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 WorldInfo {
 }
 Viewpoint {
-  orientation -0.593029167020117 0.5917464092945832 0.5460335100984128 2.1397846515477195
-  position 0.00656785603317819 0.04204964551320814 0.8049893449406769
+  orientation -0.47045365224486174 0.46868279882440955 0.7476695762003349 1.8560916133861614
+  position -0.004114746690110211 -0.678575576961103 1.4414648980484284
 }
 TexturedBackground {
 }
@@ -19,8 +19,9 @@ E-puck {
   rotation 0 0 1 1.5707996938995747
   name "e-puck-maze"
   controller "maze_solver"
-  distance_sensor_numberOfRays 2
   turretSlot [
+    DistanceSensor {
+    }
     Compass {
     }
     GPS {
@@ -35,36 +36,36 @@ RectangleArena {
   wallHeight 0.05
 }
 Wall {
-  translation -0.147677 0.0059285 0
-  size 0.01 0.3 0.1
+  translation -0.15 -0.07 0
+  size 0.01 0.45 0.05
 }
 Wall {
-  translation 0.150451 -0.229374 0
+  translation 0.15 -0.225 0
   name "wall(1)"
-  size 0.01 0.115 0.1
+  size 0.01 0.145 0.05
 }
 Wall {
-  translation 0.148586 0.0693601 0
+  translation 0.15 0.075 0
   name "wall(3)"
-  size 0.01 0.1 0.1
+  size 0.01 0.145 0.05
 }
 Wall {
-  translation 0.000622046 -0.0687469 0
+  translation 0 -0.07 0
   name "wall(2)"
-  size 0.01 0.1 0.1
+  size 0.01 0.16 0.05
 }
 Wall {
-  translation 0.00268851 0.201874 0
+  translation 0 0.234 0
   name "wall(4)"
-  size 0.01 0.1 0.1
+  size 0.01 0.16 0.05
 }
 Wall {
   translation 0.0767822 -0.145623 0
   name "wall(5)"
-  size 0.1 0.01 0.1
+  size 0.16 0.01 0.05
 }
 Wall {
-  translation 0.0718036 0.154985 0
+  translation 0.075 0.155 0
   name "wall(6)"
-  size 0.1 0.01 0.1
+  size 0.16 0.01 0.05
 }

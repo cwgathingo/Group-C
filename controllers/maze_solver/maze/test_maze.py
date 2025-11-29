@@ -15,7 +15,7 @@ def testShapes() -> None:
         (8, 8),
     ]
 
-    for (rows, cols) in shapes:
+    for rows, cols in shapes:
         start = (0, 0)
         goal = (rows - 1, cols - 1)
         maze = Maze(rows, cols, start, goal)
@@ -30,11 +30,15 @@ def testShapes() -> None:
         # All border passages are BLOCKED
         for c in range(cols):
             assert maze.getPassage((0, c), Direction.NORTH) == PassageState.BLOCKED
-            assert maze.getPassage((rows - 1, c), Direction.SOUTH) == PassageState.BLOCKED
+            assert (
+                maze.getPassage((rows - 1, c), Direction.SOUTH) == PassageState.BLOCKED
+            )
 
         for r in range(rows):
             assert maze.getPassage((r, 0), Direction.WEST) == PassageState.BLOCKED
-            assert maze.getPassage((r, cols - 1), Direction.EAST) == PassageState.BLOCKED
+            assert (
+                maze.getPassage((r, cols - 1), Direction.EAST) == PassageState.BLOCKED
+            )
 
         # Non-border passages start UNKNOWN
         for r in range(rows):
@@ -42,7 +46,12 @@ def testShapes() -> None:
                 if r == 0 or r == rows - 1 or c == 0 or c == cols - 1:
                     continue  # border cell
 
-                for d in [Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST]:
+                for d in [
+                    Direction.NORTH,
+                    Direction.EAST,
+                    Direction.SOUTH,
+                    Direction.WEST,
+                ]:
                     assert maze.getPassage((r, c), d) == PassageState.UNKNOWN
 
     print("Shape tests passed.")
@@ -80,7 +89,7 @@ def testNeighbours() -> None:
     assert maze.getNeighbour((0, 0), Direction.NORTH) is None
     assert maze.getNeighbour((0, 0), Direction.WEST) is None
 
-    # getNeighbours contents (dict) 
+    # getNeighbours contents (dict)
     neighbours = maze.getNeighbours((1, 1))
     assert neighbours[Direction.NORTH] == (0, 1)
     assert neighbours[Direction.EAST] == (1, 2)

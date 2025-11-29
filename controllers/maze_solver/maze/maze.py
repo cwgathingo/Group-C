@@ -7,6 +7,8 @@ Cell = Tuple[int, int]  # (row, col)
 """
 Represents the four cardinal directions around a cell.
 """
+
+
 class Direction(IntEnum):
     NORTH = 0
     EAST = 1
@@ -17,6 +19,8 @@ class Direction(IntEnum):
 """
 Tri-state representation of a passage between two cells.
 """
+
+
 class PassageState(Enum):
     UNKNOWN = auto()
     OPEN = auto()
@@ -36,8 +40,9 @@ Provides:
 - Update methods to incorporate new sensor information.
 - An ASCII export for reporting and debugging.
 """
-class Maze:
 
+
+class Maze:
     """
     Initialise the maze belief.
 
@@ -51,6 +56,7 @@ class Maze:
     @param start Starting cell as (row, col).
     @param goal Goal cell as (row, col).
     """
+
     def __init__(self, rows: int, cols: int, start: Cell, goal: Cell) -> None:
 
         # Store basic configuration
@@ -71,12 +77,14 @@ class Maze:
         for r in range(rows):
             row_list = []
             for c in range(cols):
-                row_list.append({
-                    Direction.NORTH: PassageState.UNKNOWN,
-                    Direction.EAST:  PassageState.UNKNOWN,
-                    Direction.SOUTH: PassageState.UNKNOWN,
-                    Direction.WEST:  PassageState.UNKNOWN,
-                })
+                row_list.append(
+                    {
+                        Direction.NORTH: PassageState.UNKNOWN,
+                        Direction.EAST: PassageState.UNKNOWN,
+                        Direction.SOUTH: PassageState.UNKNOWN,
+                        Direction.WEST: PassageState.UNKNOWN,
+                    }
+                )
             self._passages.append(row_list)
 
         # ---------------------------------------------------------
@@ -103,8 +111,7 @@ class Maze:
         # Right column
         for r in range(rows):
             self._passages[r][cols - 1][Direction.EAST] = PassageState.BLOCKED
-    
-    
+
     # ---------- Basic queries (read-only) ----------
 
     """
@@ -112,6 +119,7 @@ class Maze:
 
     @return Tuple (rows, cols).
     """
+
     def getShape(self) -> Tuple[int, int]:
         return (self._rows, self._cols)
 
@@ -120,6 +128,7 @@ class Maze:
 
     @return Start cell as (row, col).
     """
+
     def getStart(self) -> Cell:
         return self._start
 
@@ -128,6 +137,7 @@ class Maze:
 
     @return Goal cell as (row, col).
     """
+
     def getGoal(self) -> Cell:
         return self._goal
 
@@ -137,6 +147,7 @@ class Maze:
     @param cell Cell to check (row, col).
     @return True if 0 <= row < rows and 0 <= col < cols, False otherwise.
     """
+
     def inBounds(self, cell: Cell) -> bool:
         (row, col) = cell
         return 0 <= row < self._rows and 0 <= col < self._cols
@@ -148,6 +159,7 @@ class Maze:
     @param direction Direction of the passage.
     @return PassageState.UNKNOWN, OPEN, or BLOCKED.
     """
+
     def getPassage(self, cell: Cell, direction: Direction) -> PassageState:
         (row, col) = cell
         return self._passages[row][col][direction]
@@ -158,6 +170,7 @@ class Maze:
     @param cell Cell to query (row, col).
     @return Dictionary mapping Direction to PassageState.
     """
+
     def getAllPassages(self, cell: Cell) -> Dict[Direction, PassageState]:
         (row, col) = cell
         return self._passages[row][col]
@@ -168,6 +181,7 @@ class Maze:
     @param cell Cell to query (row, col).
     @return True if the cell has been marked visited, False otherwise.
     """
+
     def isVisited(self, cell: Cell) -> bool:
         (row, col) = cell
         return self._visited[row][col]
@@ -182,6 +196,7 @@ class Maze:
     @param direction Direction in which to look for a neighbour.
     @return Neighbour cell as (row, col), or None if outside the maze bounds.
     """
+
     def getNeighbour(self, cell: Cell, direction: Direction) -> Optional[Cell]:
         (row, col) = cell
 
@@ -207,14 +222,15 @@ class Maze:
     @param cell Cell to query (row, col).
     @return Dictionary: {Direction: Optional[Cell]}
     """
+
     def getNeighbours(self, cell: Cell) -> Dict[Direction, Optional[Cell]]:
         return {
             Direction.NORTH: self.getNeighbour(cell, Direction.NORTH),
-            Direction.EAST:  self.getNeighbour(cell, Direction.EAST),
+            Direction.EAST: self.getNeighbour(cell, Direction.EAST),
             Direction.SOUTH: self.getNeighbour(cell, Direction.SOUTH),
-            Direction.WEST:  self.getNeighbour(cell, Direction.WEST),
+            Direction.WEST: self.getNeighbour(cell, Direction.WEST),
         }
-    
+
     """
     Get the opposite of a given direction.
 
@@ -233,9 +249,9 @@ class Maze:
     @param direction The direction whose opposite should be returned.
     @return The opposite Direction value.
     """
+
     def getOppositeDirection(self, direction: Direction) -> Direction:
         return Direction((direction + 2) % 4)
-    
 
     # ---------- Mapping updates (belief updates) ----------
 
@@ -249,14 +265,20 @@ class Maze:
     @param direction Direction of the passage to update.
     @param passageState New passage state (typically OPEN or BLOCKED).
     """
-    def markPassageState(self, cell: Cell, direction: Direction, passageState: PassageState) -> None:
+
+    def markPassageState(
+        self, cell: Cell, direction: Direction, passageState: PassageState
+    ) -> None:
         nCell = self.getNeighbour(cell, direction)
 
         # Neighbour is outside the maze bounds
         if nCell is None:
             print(
                 "Warning: ignoring markPassageState for out-of-bounds passage "
-                "from cell", cell, "direction", direction
+                "from cell",
+                cell,
+                "direction",
+                direction,
             )
             return
 
@@ -268,10 +290,14 @@ class Maze:
         if currentState != PassageState.UNKNOWN:
             print(
                 "Warning: ignoring markPassageState; passage already known.",
-                "cell", cell,
-                "direction", direction,
-                "current state", currentState,
-                "requested state", passageState
+                "cell",
+                cell,
+                "direction",
+                direction,
+                "current state",
+                currentState,
+                "requested state",
+                passageState,
             )
             return
 
@@ -282,13 +308,12 @@ class Maze:
         opposite = self.getOppositeDirection(direction)
         self._passages[nRow][nCol][opposite] = passageState
 
-
-
     """
     Mark a cell as visited in the robot's belief.
 
     @param cell Cell to mark visited (row, col).
     """
+
     def markVisited(self, cell: Cell) -> None:
         (row, col) = cell
         self._visited[row][col] = True
@@ -319,6 +344,7 @@ class Maze:
 
     @return List of strings forming the ASCII map.
     """
+
     def exportAsciiMap(self) -> List[str]:
         asciiRows: List[str] = []
 
@@ -331,46 +357,46 @@ class Maze:
 
                 # Determine centre character
                 if self._visited[r][c]:
-                    centre = 'V'
+                    centre = "V"
                 else:
-                    centre = '?'
+                    centre = "?"
 
                 # Convert passage states to characters for each direction
                 # NORTH
                 northState = self._passages[r][c][Direction.NORTH]
                 if northState == PassageState.BLOCKED:
-                    north = '1'
+                    north = "1"
                 elif northState == PassageState.OPEN:
-                    north = '0'
+                    north = "0"
                 else:
-                    north = '?'
+                    north = "?"
 
                 # EAST
                 eastState = self._passages[r][c][Direction.EAST]
                 if eastState == PassageState.BLOCKED:
-                    east = '1'
+                    east = "1"
                 elif eastState == PassageState.OPEN:
-                    east = '0'
+                    east = "0"
                 else:
-                    east = '?'
+                    east = "?"
 
                 # SOUTH
                 southState = self._passages[r][c][Direction.SOUTH]
                 if southState == PassageState.BLOCKED:
-                    south = '1'
+                    south = "1"
                 elif southState == PassageState.OPEN:
-                    south = '0'
+                    south = "0"
                 else:
-                    south = '?'
+                    south = "?"
 
                 # WEST
                 westState = self._passages[r][c][Direction.WEST]
                 if westState == PassageState.BLOCKED:
-                    west = '1'
+                    west = "1"
                 elif westState == PassageState.OPEN:
-                    west = '0'
+                    west = "0"
                 else:
-                    west = '?'
+                    west = "?"
 
                 # Build the cell’s ASCII block
                 # "  N   "
@@ -389,7 +415,7 @@ class Maze:
             asciiRows.append("")
 
         return asciiRows
-    
+
     """
     Print the current ASCII map of the maze belief to the console.
 
@@ -399,6 +425,7 @@ class Maze:
 
     @return None
     """
+
     def printAsciiMap(self) -> None:
         asciiRows = self.exportAsciiMap()
         for row in asciiRows:

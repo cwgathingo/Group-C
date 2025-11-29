@@ -1,0 +1,19 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# VSCode
+.vscode/
+
+# Webots
+*.wbproj
+*.wbo~
+*.bak
+html/
+tmp/
+.DS_Store
+
+# Python virtual environments
+venv/
+.env/

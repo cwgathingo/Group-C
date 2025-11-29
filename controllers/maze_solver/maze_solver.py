@@ -39,8 +39,9 @@ Responsibilities:
 - Maintain the robot's belief about its current cell and orientation.
 - Drive the main control loop: sense → update map → choose action → move.
 """
-class MazeController:
 
+
+class MazeController:
     """
     Initialise the maze controller.
 
@@ -58,16 +59,17 @@ class MazeController:
     @param cellSizeMeters Size of one maze cell edge in meters.
     @param mazeOriginWorld World (x, y) position of cell (0, 0) centr
     """
+
     def __init__(
-            self, 
-            rows: int, 
-            cols: int, 
-            startCell: Cell,
-            startDirection: Direction,
-            goalCell: Cell,
-            cellSizeMeters: float,
-            mazeOriginWorld: Tuple[float, float],
-            ) -> None:
+        self,
+        rows: int,
+        cols: int,
+        startCell: Cell,
+        startDirection: Direction,
+        goalCell: Cell,
+        cellSizeMeters: float,
+        mazeOriginWorld: Tuple[float, float],
+    ) -> None:
         # Webots robot
         self._robot = Robot()
         basicStep = int(self._robot.getBasicTimeStep())
@@ -111,10 +113,10 @@ class MazeController:
 
     @return None
     """
+
     def run(self) -> None:
         while self._robot.step(self._timeStep) != -1:
 
-            # for now it's basically a stub. 
             self._robotFacade.update(self._timeStep / 1000.0)
 
             # 0. If an action is in progress, update it and skip planning
@@ -125,7 +127,7 @@ class MazeController:
             # handle the completion here.
             if self._pendingAction is not None:
                 self._handleCompletedAction()
-            
+
             # 1. Check goal condition (only when robot is idle)
             if self._currentCell == self._maze.getGoal():
                 print("\n==============================")
@@ -139,6 +141,8 @@ class MazeController:
                 break
             # 2. Sense environment and 3. update maze belief
             self._senseAndUpdateMap()
+            print("Map after sensing: ")
+            self._maze.printAsciiMap()
 
             # 4. Decide next action based on the updated belief
             action = self._decideNextAction()
@@ -148,7 +152,7 @@ class MazeController:
                 print("No action decided; stopping.")
                 self._stopMotors()
                 break
-            
+
             # 5. Start executing the chosen action (async movement)
             self._executeAction(action)
 
@@ -171,20 +175,23 @@ class MazeController:
 
     @return None
     """
+
     def _senseAndUpdateMap(self) -> None:
-        # TODO: read distance sensors and infer passage states.
-        # Example structure (pseudo-code):
-        #
-        #   hasWallNorth = ...
-        #   if hasWallNorth:
-        #       self._maze.markPassageState(self._currentCell, Direction.NORTH, PassageState.BLOCKED)
-        #   else:
-        #       self._maze.markPassageState(self._currentCell, Direction.NORTH, PassageState.OPEN)
-        #
-        # Repeat for EAST, SOUTH, WEST depending on sensor layout.
-        #
         if not self._maze.isVisited(self._currentCell):
             self._maze.markVisited(self._currentCell)
+        localPassages = self._robotFacade.senseLocalPassages()
+
+        # Debug
+        # print("SENSING: localPassages", localPassages)
+
+        for direction in Direction:
+            blocked = localPassages.get(direction)
+            if blocked:
+                self._maze.markPassageState(
+                    self._currentCell,
+                    direction,
+                    PassageState.BLOCKED,
+                )
 
     """
     Decide the next action for the robot.
@@ -198,6 +205,7 @@ class MazeController:
 
     @return A value representing the chosen action.
     """
+
     def _decideNextAction(self) -> Optional[MotionAction]:
         # TODO: integrate pathfinding / behaviour module here.
         # For now, always return None or a hard-coded action.
@@ -206,7 +214,7 @@ class MazeController:
         # going through hard coded path
         global pathIndex
         global pathList
-        if (pathIndex > len(pathList) - 1):
+        if pathIndex > len(pathList) - 1:
             return None
         action = pathList[pathIndex]
         pathIndex += 1
@@ -224,6 +232,7 @@ class MazeController:
     @param action The action to execute (as chosen by _decideNextAction).
     @return None
     """
+
     def _executeAction(self, action) -> None:
         self._pendingAction = action
         if action == MotionAction.MOVE_FORWARD_ONE_CELL:
@@ -239,6 +248,7 @@ class MazeController:
             print("Warning: trying to execute unrecognized action: ", action)
 
     """Stop all wheel motors."""
+
     def _stopMotors(self) -> None:
         # TODO: set motor velocities to 0
         pass
@@ -247,6 +257,7 @@ class MazeController:
     Optional fun routine for the end of the maze.
     Could spin the robot in place, flash LEDs, etc.
     """
+
     def _victoryCelebration(self) -> None:
         # TODO: implement a small spin or LED pattern if desired.
         # Completely optional, but looks great in presentation video.
@@ -263,6 +274,7 @@ class MazeController:
         3) Mark the passage back to the previous cell as OPEN.
         4) Print the updated ASCII map.
     """
+
     def _handleCompletedAction(self) -> None:
         if self._pendingAction is None:
             return
@@ -288,20 +300,20 @@ class MazeController:
 
             heading = self._robotFacade.getHeadingDirection()
             opposite = self._maze.getOppositeDirection(heading)
-            self._maze.markPassageState(
-                self._currentCell,
-                opposite,
-                PassageState.OPEN
-            )
+            self._maze.markPassageState(self._currentCell, opposite, PassageState.OPEN)
 
-            print("Map after MOVE_FORWARD_ONE_CELL:")
-            self._maze.printAsciiMap()
+        elif self._pendingAction in (
+            MotionAction.TURN_LEFT_90,
+            MotionAction.TURN_RIGHT_90,
+        ):
+            # Debug
+            # print(f"Heading after turn: {self._currentDirection}")
+            pass
 
-        elif self._pendingAction in (MotionAction.TURN_LEFT_90, MotionAction.TURN_RIGHT_90):
-            # For now, just log the new heading
-            print(f"Heading after turn: {self._currentDirection}")
-
+        print(f"Map after action: {self._pendingAction}: ")
+        self._maze.printAsciiMap()
         self._pendingAction = None
+
 
 """
 Entry point for the controller.
@@ -314,6 +326,8 @@ Webots world you construct.
 
 @return None
 """
+
+
 def main() -> None:
     rows = 4
     cols = 4
@@ -322,7 +336,7 @@ def main() -> None:
     goalCell: Cell = (3, 0)
 
     # TODO: set these to match your actual world
-    cellSizeMeters = 0.15          # placeholder
+    cellSizeMeters = 0.15  # placeholder
     mazeOriginWorld = (-0.225, 0.225)  # placeholder (x, y of cell (0, 0) centre)
 
     controller = MazeController(
