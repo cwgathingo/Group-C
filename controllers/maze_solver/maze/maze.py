@@ -5,7 +5,8 @@ Cell = Tuple[int, int]  # (row, col)
 
 
 """
-Represents the four cardinal directions around a cell.
+Represents the four cardinal directions used when reasoning about
+neighbouring maze cells. Values are ordered clockwise starting at NORTH.
 """
 
 
@@ -17,7 +18,9 @@ class Direction(IntEnum):
 
 
 """
-Tri-state representation of a passage between two cells.
+Tri-state belief about whether a passage between two adjacent cells
+contains a wall (BLOCKED), is traversable (OPEN), or remains unobserved
+(UNKNOWN).
 """
 
 
@@ -28,51 +31,50 @@ class PassageState(Enum):
 
 
 """
-Maintains the robot's belief about the maze layout.
+Represents a rectangular maze belief map used by the robot.
 
-Stores:
-- Maze dimensions and start/goal cells.
-- For each cell and direction, whether the passage is UNKNOWN, OPEN or BLOCKED.
-- Whether each cell has been visited.
+The Maze stores:
+- The maze shape and the designated start and goal cells.
+- A passage state (UNKNOWN / OPEN / BLOCKED) for each cell and direction.
+- A visited flag for each cell, used by exploration and planning.
 
-Provides:
-- Query methods for beliefs about passages and visited cells.
-- Update methods to incorporate new sensor information.
-- An ASCII export for reporting and debugging.
+It provides:
+- Methods for querying neighbours and passage beliefs.
+- Methods for updating beliefs from sensor information.
+- An ASCII export for debugging and reporting.
+
+This class does not contain any sensor or motion logic; it only maintains
+the robot's internal belief about the maze structure.
 """
 
 
 class Maze:
     """
-    Initialise the maze belief.
+    Initialise the maze belief structure.
 
-    - Store rows, cols, start and goal.
-    - Initialise all internal passages as UNKNOWN.
-    - Mark all outer-border passages as BLOCKED.
-    - Initialise all cells as not visited.
+    All passages start as UNKNOWN, except border passages which are marked
+    BLOCKED to prevent planning outside the maze. All cells begin unvisited.
 
-    @param rows Number of maze rows (>= 1).
-    @param cols Number of maze columns (>= 1).
-    @param start Starting cell as (row, col).
-    @param goal Goal cell as (row, col).
+    @param rows: Number of maze rows (>= 1).
+    @param cols: Number of maze columns (>= 1).
+    @param start: Starting cell as (row, col).
+    @param goal: Goal cell as (row, col).
     """
 
     def __init__(self, rows: int, cols: int, start: Cell, goal: Cell) -> None:
 
-        # Store basic configuration
+        # Store maze dimensions and the designated start/goal cells.
         self._rows = rows
         self._cols = cols
         self._start = start
         self._goal = goal
 
-        # Initialise visited matrix
-        # visited[r][c] = False
+        # Initialise visited[r][c] to track whether each cell has been explored.
         self._visited: List[List[bool]] = [
             [False for _ in range(cols)] for _ in range(rows)
         ]
 
-        # Initialise passages:
-        # passages[r][c][direction] = UNKNOWN for all internal cells
+        # Initialise passages[r][c][direction] as UNKNOWN for all cells.
         self._passages: List[List[Dict[Direction, PassageState]]] = []
         for r in range(rows):
             row_list = []
@@ -87,14 +89,11 @@ class Maze:
                 )
             self._passages.append(row_list)
 
-        # ---------------------------------------------------------
-        # Mark all outer-border passages as BLOCKED
-        #
+        # Mark maze boundaries as BLOCKED so the planner never steps outside the grid.
         # Top row:    NORTH is blocked
         # Bottom row: SOUTH is blocked
-        # Left col:   WEST is blocked
-        # Right col:  EAST is blocked
-        # ---------------------------------------------------------
+        # Left column: WEST is blocked
+        # Right column: EAST is blocked
 
         # Top row
         for c in range(cols):
@@ -115,7 +114,7 @@ class Maze:
     # ---------- Basic queries (read-only) ----------
 
     """
-    Get the maze dimensions.
+    Return the maze dimensions.
 
     @return Tuple (rows, cols).
     """
@@ -124,28 +123,28 @@ class Maze:
         return (self._rows, self._cols)
 
     """
-    Get the start cell.
+    Return the designated start cell.
 
-    @return Start cell as (row, col).
+    @return Cell (row, col).
     """
 
     def getStart(self) -> Cell:
         return self._start
 
     """
-    Get the goal cell.
+    Return the designated goal cell.
 
-    @return Goal cell as (row, col).
+    @return Cell (row, col).
     """
 
     def getGoal(self) -> Cell:
         return self._goal
 
     """
-    Check if a cell is inside the maze bounds.
+    Check whether a cell lies within the maze boundaries.
 
-    @param cell Cell to check (row, col).
-    @return True if 0 <= row < rows and 0 <= col < cols, False otherwise.
+    @param cell: Cell to check (row, col).
+    @return True if the cell is inside the maze, False otherwise.
     """
 
     def inBounds(self, cell: Cell) -> bool:
@@ -153,11 +152,11 @@ class Maze:
         return 0 <= row < self._rows and 0 <= col < self._cols
 
     """
-    Get the belief about the passage from a cell in a given direction.
+    Return the belief state of the passage from a cell in a given direction.
 
-    @param cell Source cell (row, col).
-    @param direction Direction of the passage.
-    @return PassageState.UNKNOWN, OPEN, or BLOCKED.
+    @param cell: Source cell (row, col).
+    @param direction: Direction of the passage.
+    @return PassageState for that passage.
     """
 
     def getPassage(self, cell: Cell, direction: Direction) -> PassageState:
@@ -165,10 +164,10 @@ class Maze:
         return self._passages[row][col][direction]
 
     """
-    Get the beliefs about all four passages around a cell.
+    Return all four passage beliefs for the given cell.
 
-    @param cell Cell to query (row, col).
-    @return Dictionary mapping Direction to PassageState.
+    @param cell: Cell to query (row, col).
+    @return Dictionary {Direction: PassageState}.
     """
 
     def getAllPassages(self, cell: Cell) -> Dict[Direction, PassageState]:
@@ -176,9 +175,9 @@ class Maze:
         return self._passages[row][col]
 
     """
-    Check whether a cell has ever been visited.
+    Check whether the robot has ever visited this cell.
 
-    @param cell Cell to query (row, col).
+    @param cell: Cell to query (row, col).
     @return True if the cell has been marked visited, False otherwise.
     """
 
@@ -187,14 +186,12 @@ class Maze:
         return self._visited[row][col]
 
     """
-    Get the neighbouring cell in a given direction.
+    Return the neighbouring cell in the given direction, or None if the move
+    would leave the maze.
 
-    If moving from the given cell in the given direction would leave the maze
-    bounds, this method returns None.
-
-    @param cell Source cell (row, col).
-    @param direction Direction in which to look for a neighbour.
-    @return Neighbour cell as (row, col), or None if outside the maze bounds.
+    @param cell: Starting cell (row, col).
+    @param direction: Direction in which to look.
+    @return Adjacent cell as (row, col), or None if outside bounds.
     """
 
     def getNeighbour(self, cell: Cell, direction: Direction) -> Optional[Cell]:
@@ -214,13 +211,11 @@ class Maze:
         return None
 
     """
-    Get neighbour cells in each cardinal direction.
+    Return neighbouring cells in all four directions.
 
-    Returns a dictionary mapping each Direction to either the neighbour cell,
-    or None if moving in that direction would leave the maze.
-
-    @param cell Cell to query (row, col).
-    @return Dictionary: {Direction: Optional[Cell]}
+    @param cell: Cell to query (row, col).
+    @return Dictionary {Direction: Optional[Cell]} mapping each direction to
+            a neighbouring cell or None if out of bounds.
     """
 
     def getNeighbours(self, cell: Cell) -> Dict[Direction, Optional[Cell]]:
@@ -232,22 +227,13 @@ class Maze:
         }
 
     """
-    Get the opposite of a given direction.
+    Return the direction directly opposite the given one.
 
-    The directions are arranged in the order:
-    NORTH (0), EAST (1), SOUTH (2), WEST (3).
+    The Direction enum is an IntEnum ordered clockwise, so the opposite
+    direction is obtained by (direction + 2) % 4.
 
-    Because the Direction enum is defined as an IntEnum with values 0–3,
-    the opposite direction can be computed by adding 2 and taking modulo 4.
-
-    For example:
-    - NORTH → SOUTH
-    - EAST  → WEST
-    - SOUTH → NORTH
-    - WEST  → EAST
-
-    @param direction The direction whose opposite should be returned.
-    @return The opposite Direction value.
+    @param direction: Direction whose opposite is required.
+    @return Opposite Direction.
     """
 
     def getOppositeDirection(self, direction: Direction) -> Direction:
@@ -256,14 +242,17 @@ class Maze:
     # ---------- Mapping updates (belief updates) ----------
 
     """
-    Mark the passage in a direction from a cell as OPEN or BLOCKED.
+    Update the belief about a passage from the given cell.
 
-    Also updates the symmetric passage in the neighbouring cell
-    if the neighbour is inside the maze.
+    Updates both:
+    - the passage in the given direction, and
+    - the symmetric passage in the neighbouring cell (if inside bounds).
 
-    @param cell Source cell (row, col).
-    @param direction Direction of the passage to update.
-    @param passageState New passage state (typically OPEN or BLOCKED).
+    This method only updates passages currently marked UNKNOWN.
+
+    @param cell: Source cell (row, col).
+    @param direction: Direction of the passage.
+    @param passageState: New state (typically OPEN or BLOCKED).
     """
 
     def markPassageState(
@@ -309,40 +298,32 @@ class Maze:
         self._passages[nRow][nCol][opposite] = passageState
 
     """
-    Mark a cell as visited in the robot's belief.
+    Mark a cell as visited in the belief map.
 
-    @param cell Cell to mark visited (row, col).
+    @param cell: Cell to mark (row, col).
     """
 
     def markVisited(self, cell: Cell) -> None:
         (row, col) = cell
         self._visited[row][col] = True
 
-    def isVisited(self, cell: Cell) -> bool:
-        (row, col) = cell
-        return self._visited[row][col]
-
     # ---------- ASCII export ----------
 
     """
-    Export the robot’s current maze belief as an ASCII map.
+    Generate an ASCII representation of the maze belief.
 
-    Each maze cell is rendered as a fixed 3-row block showing its four
-    surrounding passages and whether the cell has been visited.
-
-    Passage encoding:
+    Each cell is rendered using a fixed 3-row block showing:
+    - The passage state on each side:
         '1' = BLOCKED
         '0' = OPEN
         '?' = UNKNOWN
-
-    Cell centre:
+    - The centre character:
         'V' = visited
         '?' = unvisited
 
-    The function returns a list of text lines. Use printAsciiMap() to
-    print them directly.
+    Used for debugging and assignment reporting.
 
-    @return List of strings forming the ASCII map.
+    @return List[str] representing the full ASCII map.
     """
 
     def exportAsciiMap(self) -> List[str]:
@@ -361,51 +342,28 @@ class Maze:
                 else:
                     centre = "?"
 
-                # Convert passage states to characters for each direction
-                # NORTH
-                northState = self._passages[r][c][Direction.NORTH]
-                if northState == PassageState.BLOCKED:
-                    north = "1"
-                elif northState == PassageState.OPEN:
-                    north = "0"
-                else:
-                    north = "?"
+                # Convert each directional passage state (N, E, S, W) into a single character.
+                chars: Dict[Direction, str] = {}
+                for direction in Direction:
+                    state = self._passages[r][c][direction]
+                    if state == PassageState.BLOCKED:
+                        chars[direction] = "1"
+                    elif state == PassageState.OPEN:
+                        chars[direction] = "0"
+                    else:
+                        chars[direction] = "?"
 
-                # EAST
-                eastState = self._passages[r][c][Direction.EAST]
-                if eastState == PassageState.BLOCKED:
-                    east = "1"
-                elif eastState == PassageState.OPEN:
-                    east = "0"
-                else:
-                    east = "?"
+                north = chars[Direction.NORTH]
+                east = chars[Direction.EAST]
+                south = chars[Direction.SOUTH]
+                west = chars[Direction.WEST]
 
-                # SOUTH
-                southState = self._passages[r][c][Direction.SOUTH]
-                if southState == PassageState.BLOCKED:
-                    south = "1"
-                elif southState == PassageState.OPEN:
-                    south = "0"
-                else:
-                    south = "?"
-
-                # WEST
-                westState = self._passages[r][c][Direction.WEST]
-                if westState == PassageState.BLOCKED:
-                    west = "1"
-                elif westState == PassageState.OPEN:
-                    west = "0"
-                else:
-                    west = "?"
-
-                # Build the cell’s ASCII block
-                # "  N   "
+                # Build the cell’s three-line ASCII block:
+                #   top:    "  N   "
+                #   middle: "W C E "
+                #   bottom: "  S   "
                 rowTop += "  " + north + "    "
-
-                # "W C E "
                 rowMiddle += west + " " + centre + " " + east + "  "
-
-                # "  S   "
                 rowBottom += "  " + south + "    "
 
             # Append the three lines for this maze row and a blank separator
@@ -417,11 +375,9 @@ class Maze:
         return asciiRows
 
     """
-    Print the current ASCII map of the maze belief to the console.
+    Print the ASCII representation of the current maze belief to the console.
 
-    This method calls exportAsciiMap() to generate the ASCII
-    representation, then prints each line to standard output.
-    It is intended for debugging and demonstration purposes.
+    This is a convenience wrapper around exportAsciiMap().
 
     @return None
     """
