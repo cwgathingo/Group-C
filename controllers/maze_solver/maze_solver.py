@@ -1,8 +1,18 @@
-from typing import Optional
+from typing import Optional, Tuple
 from controller import Robot
 
 from maze.maze import Maze, Direction, PassageState, Cell
+from robots.robot_interface import RobotFacade, MotionAction, ActionResult
+from robots.epuck_facade import EPuckFacade
 
+
+# Debug path
+pathIndex = 0
+pathList = [
+    MotionAction.MOVE_FORWARD_ONE_CELL,
+    MotionAction.MOVE_FORWARD_ONE_CELL,
+    MotionAction.MOVE_FORWARD_ONE_CELL,
+]
 
 """
 High-level controller for the maze-solving robot.
@@ -30,9 +40,21 @@ class MazeController:
     @param rows Number of maze rows in the belief model.
     @param cols Number of maze columns in the belief model.
     @param startCell Starting cell (row, col) for the robot.
+    @param startDirection the direction of the robot at the start.
     @param goalCell Goal cell (row, col) for the robot.
+    @param cellSizeMeters Size of one maze cell edge in meters.
+    @param mazeOriginWorld World (x, y) position of cell (0, 0) centr
     """
-    def __init__(self, rows: int, cols: int, startCell: Cell, goalCell: Cell) -> None:
+    def __init__(
+            self, 
+            rows: int, 
+            cols: int, 
+            startCell: Cell,
+            startDirection: Direction,
+            goalCell: Cell,
+            cellSizeMeters: float,
+            mazeOriginWorld: Tuple[float, float],
+            ) -> None:
         # Webots robot
         self._robot = Robot()
         basicStep = int(self._robot.getBasicTimeStep())
@@ -43,18 +65,20 @@ class MazeController:
 
         # Robot belief about its pose in maze coordinates
         self._currentCell: Cell = startCell
-        self._currentDirection: Direction = Direction.NORTH  # assumed initial heading
+        self._currentDirection: Direction = startDirection
 
-        # Movement / action state
-        self._actionInProgress = False
-        self._currentAction = None  # later: probably an enum
+        # Robot motion facade (e-puck implementation)
+        self._robotFacade: RobotFacade = EPuckFacade(
+            robot=self._robot,
+            cellSizeMeters=cellSizeMeters,
+            mazeOriginWorld=mazeOriginWorld,
+            startCell=startCell,
+            startDirection=self._currentDirection,
+        )
 
-        # TODO: initialise devices (wheels, distance sensors, GPS, compass)
-        # self._leftMotor = ...
-        # self._rightMotor = ...
-        # self._distanceSensors = [...]
-        # self._gps = ...
-        # self._compass = ...
+        # Track the high-level action we asked the robot to execute.
+        # None = no pending action (idle from planning perspective).
+        self._pendingAction: Optional[MotionAction] = None
 
     """
     Main control loop.
@@ -77,11 +101,18 @@ class MazeController:
     def run(self) -> None:
         while self._robot.step(self._timeStep) != -1:
 
+            # for now it's basically a stub. 
+            self._robotFacade.update(self._timeStep / 1000.0)
+
             # 0. If an action is in progress, update it and skip planning
-            if self._actionInProgress:
-                self._updateOngoingAction()
+            if self._robotFacade.isBusy():
                 continue
 
+            # If we had asked for an action previously and the robot is now idle,
+            # handle the completion here.
+            if self._pendingAction is not None:
+                self._handleCompletedAction()
+            
             # 1. Check goal condition (only when robot is idle)
             if self._currentCell == self._maze.getGoal():
                 print("\n==============================")
@@ -106,7 +137,7 @@ class MazeController:
                 break
             
             # 5. Start executing the chosen action (async movement)
-            self._startAction(action)
+            self._executeAction(action)
 
         print("Final belief map:")
         self._maze.printAsciiMap()
@@ -153,10 +184,19 @@ class MazeController:
 
     @return A value representing the chosen action.
     """
-    def _decideNextAction(self):
+    def _decideNextAction(self) -> Optional[MotionAction]:
         # TODO: integrate pathfinding / behaviour module here.
         # For now, always return None or a hard-coded action.
-        return None
+        # return None
+
+        # going through hard coded path
+        global pathIndex
+        global pathList
+        if (pathIndex > len(pathList) - 1):
+            return None
+        action = pathList[pathIndex]
+        pathIndex += 1
+        return action
 
     """
     Execute one atomic action and update the belief pose.
@@ -171,9 +211,16 @@ class MazeController:
     @return None
     """
     def _executeAction(self, action) -> None:
-        # TODO: implement movement primitives (turn left/right, move one cell).
-        # For now, this is a stub so the controller compiles and runs.
-        pass
+        if action == MotionAction.MOVE_FORWARD_ONE_CELL:
+            print("Executing Action: MOVE_FORWARD_ONE_CELL")
+            self._pendingAction = MotionAction.MOVE_FORWARD_ONE_CELL
+            self._robotFacade.requestMoveForwardOneCell()
+        elif action == MotionAction.TURN_LEFT_90:
+            self._robotFacade.requestTurnLeft90()
+        elif action == MotionAction.TURN_RIGHT_90:
+            self._robotFacade.requestTurnRight90()
+        else:
+            print("Warning: trying to execute unrecognized action: ", action)
 
     """Stop all wheel motors."""
     def _stopMotors(self) -> None:
@@ -189,6 +236,55 @@ class MazeController:
         # Completely optional, but looks great in presentation video.
         pass
 
+    """
+    Handle the completion of the last pending action.
+
+    - Check the facade's last action result.
+    - If not successful, stop and exit (for now).
+    - If MOVE_FORWARD_ONE_CELL succeeded:
+        1) Sync currentCell from the robot facade.
+        2) Mark that cell as visited in the maze belief.
+        3) Mark the passage back to the previous cell as OPEN.
+        4) Print the updated ASCII map.
+    """
+    def _handleCompletedAction(self) -> None:
+        if self._pendingAction is None:
+            return
+
+        result = self._robotFacade.getLastActionResult()
+
+        if result != ActionResult.SUCCESS:
+            print("Action failed:", self._pendingAction, "result:", result)
+            self._stopMotors()
+            # For now, exit the controller on any failure.
+            # (You can add smarter recovery later.)
+            self._pendingAction = None
+            # Force termination by exiting run() main loop:
+            # simplest is to raise SystemExit.
+            raise SystemExit
+
+        # At this point: result == SUCCESS
+        if self._pendingAction == MotionAction.MOVE_FORWARD_ONE_CELL:
+            # 1) Sync current cell belief from robot facade
+            self._currentCell = self._robotFacade.getCurrentCell()
+
+            # 2) Mark the passage back to the previous cell as OPEN.
+            #    We arrived here from the opposite of the current heading.
+            heading = self._robotFacade.getHeadingDirection()
+            opposite = self._maze.getOppositeDirection(heading)
+            self._maze.markPassageState(
+                self._currentCell,
+                opposite,
+                PassageState.OPEN
+            )
+
+            # 4) Print a map for debugging
+            print("Map after MOVE_FORWARD_ONE_CELL:")
+            self._maze.printAsciiMap()
+
+        # Clear the pending action now that we've processed it
+        self._pendingAction = None
+
 """
 Entry point for the controller.
 
@@ -203,10 +299,24 @@ Webots world you construct.
 def main() -> None:
     rows = 4
     cols = 4
-    startCell: Cell = (0, 0)
-    goalCell: Cell = (3, 3)
+    startCell: Cell = (3, 3)
+    startDirection = Direction.NORTH
+    goalCell: Cell = (3, 0)
 
-    controller = MazeController(rows, cols, startCell, goalCell)
+    # TODO: set these to match your actual world
+    cellSizeMeters = 0.1          # placeholder
+    mazeOriginWorld = (-0.15, 0.15)  # placeholder (x, y of cell (0, 0) centre)
+
+    controller = MazeController(
+        rows,
+        cols,
+        startCell,
+        startDirection,
+        goalCell,
+        cellSizeMeters,
+        mazeOriginWorld,
+    )
+
     controller.run()
 
 

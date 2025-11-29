@@ -20,7 +20,7 @@ E-puck {
   translation 0.15 -0.15 0
   rotation 0 0 1 1.5707996938995747
   name "e-puck-maze"
-  controller "e_puck_maze"
+  controller "maze_solver"
   distance_sensor_numberOfRays 2
   turretSlot [
     Compass {
