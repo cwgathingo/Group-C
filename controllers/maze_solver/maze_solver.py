@@ -10,7 +10,7 @@ from robots.epuck_facade import EPuckFacade
 pathIndex = 0
 pathList = [
     MotionAction.MOVE_FORWARD_ONE_CELL,
-    MotionAction.MOVE_FORWARD_ONE_CELL,
+    MotionAction.TURN_LEFT_90,
     MotionAction.MOVE_FORWARD_ONE_CELL,
 ]
 
@@ -304,8 +304,8 @@ def main() -> None:
     goalCell: Cell = (3, 0)
 
     # TODO: set these to match your actual world
-    cellSizeMeters = 0.1          # placeholder
-    mazeOriginWorld = (-0.15, 0.15)  # placeholder (x, y of cell (0, 0) centre)
+    cellSizeMeters = 0.15          # placeholder
+    mazeOriginWorld = (-0.225, 0.225)  # placeholder (x, y of cell (0, 0) centre)
 
     controller = MazeController(
         rows,

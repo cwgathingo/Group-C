@@ -5,19 +5,17 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/RectangleArena.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/gctronic/e-puck/protos/E-puck.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/apartment_structure/protos/Wall.proto"
-EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/Floor.proto"
-EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/appearances/protos/Parquetry.proto"
 
 WorldInfo {
 }
 Viewpoint {
   orientation -0.593029167020117 0.5917464092945832 0.5460335100984128 2.1397846515477195
-  position 0.006691077471925639 0.03791465622714529 0.7534607367531094
+  position 0.00656785603317819 0.04204964551320814 0.8049893449406769
 }
 TexturedBackground {
 }
 E-puck {
-  translation 0.15 -0.15 0
+  translation 0.225 -0.225 0
   rotation 0 0 1 1.5707996938995747
   name "e-puck-maze"
   controller "maze_solver"
@@ -32,60 +30,41 @@ E-puck {
 TexturedBackgroundLight {
 }
 RectangleArena {
-  floorSize 0.4 0.4
-  floorTileSize 0.2 0.2
+  floorSize 0.6 0.6
+  floorTileSize 0.3 0.3
   wallHeight 0.05
 }
 Wall {
-  translation -0.1 -0.05 0
+  translation -0.147677 0.0059285 0
   size 0.01 0.3 0.1
 }
 Wall {
-  translation 0.1 -0.155 0
+  translation 0.150451 -0.229374 0
   name "wall(1)"
   size 0.01 0.115 0.1
 }
 Wall {
-  translation 0.1 0.05 0
+  translation 0.148586 0.0693601 0
   name "wall(3)"
   size 0.01 0.1 0.1
 }
 Wall {
-  translation 0 -0.05 0
+  translation 0.000622046 -0.0687469 0
   name "wall(2)"
   size 0.01 0.1 0.1
 }
 Wall {
-  translation 0 0.15 0
+  translation 0.00268851 0.201874 0
   name "wall(4)"
   size 0.01 0.1 0.1
 }
 Wall {
-  translation 0.05 -0.1 0
+  translation 0.0767822 -0.145623 0
   name "wall(5)"
   size 0.1 0.01 0.1
 }
 Wall {
-  translation 0.05 0.1 0
+  translation 0.0718036 0.154985 0
   name "wall(6)"
   size 0.1 0.01 0.1
-}
-Floor {
-  translation 0.15 -0.15 0
-  size 0.08 0.08
-  tileSize 0.05 0.05
-  appearance Parquetry {
-    type "chequered"
-    colorOverride 1 0 0.0156863
-  }
-}
-Floor {
-  translation -0.15 -0.15 0
-  name "floor(1)"
-  size 0.08 0.08
-  tileSize 0.05 0.05
-  appearance Parquetry {
-    type "chequered"
-    colorOverride 0 1 0.0823529
-  }
 }
