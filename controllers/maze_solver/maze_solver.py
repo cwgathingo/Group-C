@@ -6,11 +6,24 @@ from robots.robot_interface import RobotFacade, MotionAction, ActionResult
 from robots.epuck_facade import EPuckFacade
 
 
-# Debug path
+# Temporary hard-coded path for motion debugging.
+# Will be replaced by planner output later.
 pathIndex = 0
 pathList = [
     MotionAction.MOVE_FORWARD_ONE_CELL,
     MotionAction.TURN_LEFT_90,
+    MotionAction.MOVE_FORWARD_ONE_CELL,
+    MotionAction.TURN_RIGHT_90,
+    MotionAction.MOVE_FORWARD_ONE_CELL,
+    MotionAction.TURN_LEFT_90,
+    MotionAction.MOVE_FORWARD_ONE_CELL,
+    MotionAction.TURN_RIGHT_90,
+    MotionAction.MOVE_FORWARD_ONE_CELL,
+    MotionAction.TURN_LEFT_90,
+    MotionAction.MOVE_FORWARD_ONE_CELL,
+    MotionAction.TURN_LEFT_90,
+    MotionAction.MOVE_FORWARD_ONE_CELL,
+    MotionAction.MOVE_FORWARD_ONE_CELL,
     MotionAction.MOVE_FORWARD_ONE_CELL,
 ]
 
@@ -170,7 +183,8 @@ class MazeController:
         #
         # Repeat for EAST, SOUTH, WEST depending on sensor layout.
         #
-        self._maze.markVisited(self._currentCell)
+        if not self._maze.isVisited(self._currentCell):
+            self._maze.markVisited(self._currentCell)
 
     """
     Decide the next action for the robot.
@@ -211,13 +225,15 @@ class MazeController:
     @return None
     """
     def _executeAction(self, action) -> None:
+        self._pendingAction = action
         if action == MotionAction.MOVE_FORWARD_ONE_CELL:
             print("Executing Action: MOVE_FORWARD_ONE_CELL")
-            self._pendingAction = MotionAction.MOVE_FORWARD_ONE_CELL
             self._robotFacade.requestMoveForwardOneCell()
         elif action == MotionAction.TURN_LEFT_90:
+            print("Executing Action: TURN_LEFT_90")
             self._robotFacade.requestTurnLeft90()
         elif action == MotionAction.TURN_RIGHT_90:
+            print("Executing Action: TURN_RIGHT_90")
             self._robotFacade.requestTurnRight90()
         else:
             print("Warning: trying to execute unrecognized action: ", action)
@@ -263,13 +279,13 @@ class MazeController:
             # simplest is to raise SystemExit.
             raise SystemExit
 
-        # At this point: result == SUCCESS
-        if self._pendingAction == MotionAction.MOVE_FORWARD_ONE_CELL:
-            # 1) Sync current cell belief from robot facade
-            self._currentCell = self._robotFacade.getCurrentCell()
+        # Update shared heading belief after *any* action
+        self._currentDirection = self._robotFacade.getHeadingDirection()
 
-            # 2) Mark the passage back to the previous cell as OPEN.
-            #    We arrived here from the opposite of the current heading.
+        if self._pendingAction == MotionAction.MOVE_FORWARD_ONE_CELL:
+            self._currentCell = self._robotFacade.getCurrentCell()
+            self._maze.markVisited(self._currentCell)
+
             heading = self._robotFacade.getHeadingDirection()
             opposite = self._maze.getOppositeDirection(heading)
             self._maze.markPassageState(
@@ -278,11 +294,13 @@ class MazeController:
                 PassageState.OPEN
             )
 
-            # 4) Print a map for debugging
             print("Map after MOVE_FORWARD_ONE_CELL:")
             self._maze.printAsciiMap()
 
-        # Clear the pending action now that we've processed it
+        elif self._pendingAction in (MotionAction.TURN_LEFT_90, MotionAction.TURN_RIGHT_90):
+            # For now, just log the new heading
+            print(f"Heading after turn: {self._currentDirection}")
+
         self._pendingAction = None
 
 """

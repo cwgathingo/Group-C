@@ -293,6 +293,10 @@ class Maze:
         (row, col) = cell
         self._visited[row][col] = True
 
+    def isVisited(self, cell: Cell) -> bool:
+        (row, col) = cell
+        return self._visited[row][col]
+
     # ---------- ASCII export ----------
 
     """
