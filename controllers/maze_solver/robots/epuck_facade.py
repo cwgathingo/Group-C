@@ -1,7 +1,7 @@
 # controllers/maze_solver/robots/epuck_facade.py
 
 from typing import Tuple, Optional
-from math import atan2, cos, hypot, pi, isnan, sin
+from math import cos, pi, sin
 
 from controller import Robot as WebotsRobot
 
@@ -165,7 +165,7 @@ class EPuckFacade(RobotFacade):
         self._targetPose = None
 
         # --- Turn tracking ---
-        self._turnSpeed: float = 0.2 * self._maxSpeed  # base turn speed
+        self._turnSpeed: float = 0.3 * self._maxSpeed  # base turn speed
         self._turnSign: Optional[int] = None  # +1 = left turn, -1 = right turn
 
     # ------------------------------------------------------------------
