@@ -1,3 +1,9 @@
+import os
+import sys
+
+# Add the parent 'controllers' directory to sys.path so we can import maze_shared
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
 from collections import deque
 from math import inf
 from typing import List, Optional, Tuple
@@ -7,6 +13,14 @@ from maze.maze import Maze, Direction, PassageState, Cell
 from robots.robot_interface import RobotFacade, MotionAction, ActionResult
 from robots.epuck_facade import EPuckFacade
 
+from maze_shared.dynamic_config import (
+    ROWS,
+    COLS,
+    CELL_SIZE,
+    START as RUNTIME_START,
+    GOAL as RUNTIME_GOAL,
+)
+from maze_shared.maze_config import MAZE_ORIGIN
 
 # Temporary hard-coded path for motion debugging.
 # Will be replaced by planner output later.
@@ -117,6 +131,20 @@ class MazeController:
     """
 
     def run(self) -> None:
+        # --- Wait for world_ready from the supervisor ---
+        print("[maze_solver] Waiting for world_ready==1 from supervisor...")
+
+        # If the API is available (it is on Webots Robot), poll customData
+        if hasattr(self._robot, "getCustomData"):
+            while True:
+                value = self._robot.getCustomData() or ""
+                if "world_ready=1" in value:
+                    print("[maze_solver] world_ready==1, starting control loop.")
+                    break
+                # advance simulation until supervisor flips the flag
+                if self._robot.step(self._timeStep) == -1:
+                    return
+
         while self._robot.step(self._timeStep) != -1:
 
             self._robotFacade.update(self._timeStep / 1000.0)
@@ -496,15 +524,14 @@ Webots world you construct.
 
 
 def main() -> None:
-    rows = 4
-    cols = 4
-    startCell: Cell = (3, 3)
+    rows = ROWS
+    cols = COLS
+    startCell: Cell = RUNTIME_START
     startDirection = Direction.NORTH
-    goalCell: Cell = (3, 0)
+    goalCell: Cell = RUNTIME_GOAL
 
-    # TODO: set these to match your actual world
-    cellSizeMeters = 0.15  # placeholder
-    mazeOriginWorld = (-0.225, 0.225)  # placeholder (x, y of cell (0, 0) centre)
+    cellSizeMeters = CELL_SIZE
+    mazeOriginWorld = MAZE_ORIGIN  # (x, y) of cell (0, 0) centre
 
     controller = MazeController(
         rows,

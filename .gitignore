@@ -17,3 +17,4 @@ tmp/
 # Python virtual environments
 venv/
 .env/
+/controllers/maze_shared/dynamic_config.py

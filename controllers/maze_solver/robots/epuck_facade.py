@@ -286,8 +286,8 @@ class EPuckFacade(RobotFacade):
         # print("Raw Sensors: ", self._readIrRaw())
         # print("Front Sensor: ", self._frontSensor.getValue())
         frontSensorIndices = [0, 7]
-        leftSensorsIndices = [4, 5, 6]
-        rightSensorsIndices = [1, 2, 3]
+        leftSensorsIndices = [5]
+        rightSensorsIndices = [2]
         isFrontBlocked = (
             True
             if (
