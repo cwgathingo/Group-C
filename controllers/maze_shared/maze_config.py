@@ -2,7 +2,7 @@
 
 from typing import Tuple
 
-SEED = 1115
+SEED = 1005
 
 # Maze dimensions (in cells)
 ROWS: int = 6

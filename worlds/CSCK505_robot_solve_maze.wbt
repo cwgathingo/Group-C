@@ -17,6 +17,13 @@ TexturedBackground {
 Robot {
   controller "maze_builder"
   supervisor TRUE
+    children [
+      DEF TIME_DISPLAY Display {
+        name "TIME_DISPLAY"
+        width 300
+        height 60
+      }
+    ]
 }
 DEF MAZE_ROBOT E-puck {
   rotation 0 0 1 1.5707996938995747

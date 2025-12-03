@@ -346,9 +346,30 @@ CELL_SIZE = {CELL_SIZE}
         print(f"[maze_builder] ERROR writing dynamic_config.py: {e}")
 
 
+def update_time_display(display, sim_time: float) -> None:
+    # Convert seconds → h:m:s:ms
+    total_ms = int(sim_time * 1000)
+    hours = total_ms // (3600 * 1000)
+    minutes = (total_ms // (60 * 1000)) % 60
+    seconds = (total_ms // 1000) % 60
+    millis = total_ms % 1000
+
+    time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}.{millis:03d}"
+
+    # Draw to display
+    display.setColor(0xFFFFFF)  # white background
+    display.fillRectangle(0, 0, display.getWidth(), display.getHeight())
+
+    display.setColor(0x000000)  # black text
+    display.drawText(time_str, 10, 10)
+
+
 def main():
     supervisor = Supervisor()
     timestep = int(supervisor.getBasicTimeStep()) or 32
+
+    time_display = supervisor.getDevice("TIME_DISPLAY")
+    time_display.setFont("Arial", 20, True)
 
     # Initialise world_ready to 0 for this run
     robot_node = supervisor.getFromDef("MAZE_ROBOT")
@@ -387,6 +408,7 @@ def main():
         print("[maze_builder] world_ready set to 1")
 
     while supervisor.step(timestep) != -1:
+        update_time_display(time_display, supervisor.getTime())
         pass
 
 
