@@ -12,7 +12,6 @@ from .robot_interface import (
     ActionResult,
     Vec2,
     Pose2D,
-    directionUnit,
 )
 from maze.maze import (
     Cell,
@@ -30,7 +29,7 @@ TRACK_WIDTH = 0.057
 
 # Tolerance Definitions
 POSITION_TOLERANCE = 0.0005
-ANGLE_TOLERANCE = 0.03  # ~1.7°
+ANGLE_TOLERANCE = 0.03  # ~1.7 degrees
 
 # Sensors Wall Threshold
 IR_SESNOR_WALL_THRESHOLD = 80
@@ -40,16 +39,8 @@ FRONT_SESNOR_WALL_THRESHOLD = 900
 """
 Convert a maze Direction into a world-frame orientation angle.
 
-The exact mapping depends on how the maze is aligned in the Webots world.
-For example, if NORTH corresponds to +y in world coordinates and EAST to
-+x, you might choose:
-
-    EAST  → 0 rad
-    NORTH → +π/2
-    WEST  → π
-    SOUTH → -π/2
-
-You should adjust this mapping to match your actual world axes.
+@param direction Maze heading to convert.
+@return Heading angle in radians.
 """
 
 
@@ -108,7 +99,7 @@ class EPuckFacade(RobotFacade):
         self._cellSize = cellSizeMeters
         self._mazeOrigin = mazeOriginWorld
 
-        # Basic timestep (ms → s) from Webots
+        # Basic timestep (milliseconds to seconds) from Webots
         basicStepMs = int(self._robot.getBasicTimeStep())
         self._timeStepSeconds = (basicStepMs if basicStepMs > 0 else 32) / 1000.0
 
@@ -175,11 +166,8 @@ class EPuckFacade(RobotFacade):
     """
     Advance the internal control loop by one timestep.
 
-    For now this just stubs out the structure. You will:
-    - Read sensors / encoders.
-    - Update ongoing motion (if any).
-    - Apply course correction.
-    - Decide when an action has completed.
+    @param timeStepSeconds Duration of this timestep in seconds.
+    @return None
     """
 
     def update(self, timeStepSeconds: float) -> None:
@@ -221,6 +209,8 @@ class EPuckFacade(RobotFacade):
     Get the robot's current heading as a unit vector in world coordinates.
 
     For now you can return a dummy value until compass is wired.
+
+    @return Heading unit vector (hx, hy).
     """
 
     def getHeadingVector(self) -> Vec2:
@@ -235,6 +225,8 @@ class EPuckFacade(RobotFacade):
 
     Initially you can just return self._currentDirection; later you can
     derive it from the heading vector with a tolerance.
+
+    @return Maze heading as Direction.
     """
 
     def getHeadingDirection(self) -> Direction:
@@ -246,6 +238,8 @@ class EPuckFacade(RobotFacade):
 
     """
     Request: move forward exactly one maze cell.
+
+    @return None
     """
 
     def requestMoveForwardOneCell(self) -> None:
@@ -276,10 +270,18 @@ class EPuckFacade(RobotFacade):
 
     """
     Request: turn 90 degrees left (counter-clockwise).
+
+    @return None
     """
 
     def requestTurnLeft90(self) -> None:
         self._requestTurn90(MotionAction.TURN_LEFT_90)
+
+    """
+    Sense nearby passages using IR sensors.
+
+    @return Mapping Direction -> Optional[bool] where True means wall detected.
+    """
 
     def senseLocalPassages(self):
         # Debug
@@ -343,10 +345,19 @@ class EPuckFacade(RobotFacade):
 
     """
     Request: turn 90 degrees right (clockwise).
+
+    @return None
     """
 
     def requestTurnRight90(self) -> None:
         self._requestTurn90(MotionAction.TURN_RIGHT_90)
+
+    """
+    Internal helper to start a 90-degree turn.
+
+    @param action MotionAction.TURN_LEFT_90 or MotionAction.TURN_RIGHT_90.
+    @return None
+    """
 
     def _requestTurn90(self, action: MotionAction) -> None:
         if self._state == RobotState.EXECUTING_ACTION:
@@ -373,6 +384,8 @@ class EPuckFacade(RobotFacade):
     """
     Update logic for MOVE_FORWARD_ONE_CELL.
     stops when the target cell centre is reached or slightly overshot.
+
+    @return None
     """
 
     def _updateForwardAction(self) -> None:
@@ -387,7 +400,7 @@ class EPuckFacade(RobotFacade):
         dist = 0.5 * (dl + dr)
 
         # 2. Simple straightness correction (odometry-only)
-        wheel_delta = dr - dl  # >0 ⇒ right travelled further than left
+        wheel_delta = dr - dl  # >0 => right travelled further than left
         K = 5.0
         correction = K * wheel_delta
 
@@ -422,10 +435,12 @@ class EPuckFacade(RobotFacade):
         # print("Finished Action Forward: cell", self._currentCell)
 
     """
-    Update logic for 90° turn actions (left or right).
+    Update logic for 90 degree turn actions (left or right).
 
     Uses wheel encoder odometry to estimate heading change and stops when
-    the rotation magnitude is approximately 90° (within ANGLE_TOLERANCE).
+    the rotation magnitude is approximately 90 degrees (within ANGLE_TOLERANCE).
+
+    @return None
     """
 
     def _updateTurnAction(self) -> None:
@@ -447,7 +462,7 @@ class EPuckFacade(RobotFacade):
 
         # Have we turned (roughly) 90 degrees?
         if abs(turned - target) > ANGLE_TOLERANCE:
-            # Still too far from 90°, keep turning
+            # Still too far from 90 degrees, keep turning
             return
 
         # Stop motors
@@ -484,6 +499,8 @@ class EPuckFacade(RobotFacade):
 
     """
     Check whether the robot is currently executing an action.
+
+    @return True if an atomic action is in progress.
     """
 
     def isBusy(self) -> bool:
@@ -491,6 +508,8 @@ class EPuckFacade(RobotFacade):
 
     """
     Get the currently executing motion action, if any.
+
+    @return Current MotionAction or None.
     """
 
     def getCurrentAction(self) -> Optional[MotionAction]:
@@ -498,6 +517,8 @@ class EPuckFacade(RobotFacade):
 
     """
     Get the result of the most recently completed action.
+
+    @return Last ActionResult value.
     """
 
     def getLastActionResult(self) -> ActionResult:
@@ -509,6 +530,8 @@ class EPuckFacade(RobotFacade):
 
     """
     Cancel any ongoing action and stop the robot safely.
+
+    @return None
     """
 
     def cancelAction(self) -> None:
@@ -532,6 +555,7 @@ class EPuckFacade(RobotFacade):
 
     @param cell      New cell as (row, col).
     @param direction New maze heading.
+    @return None
     """
 
     def resetPose(self, cell: Cell, direction: Direction) -> None:
@@ -542,6 +566,12 @@ class EPuckFacade(RobotFacade):
     # ------------------------------------------------------------------
     # Optional world-pose accessors
     # ------------------------------------------------------------------
+
+    """
+    Compute and store the continuous world pose from the discrete state.
+
+    @return None
+    """
 
     def _setWorldPose(self) -> None:
         # --- Continuous pose (world coordinates) ---
@@ -570,6 +600,8 @@ class EPuckFacade(RobotFacade):
 
     """
     Optionally return the robot's world position only (x, y).
+
+    @return Tuple (x, y) or None.
     """
 
     def getWorldPosition(self) -> Optional[Tuple[float, float]]:
@@ -586,6 +618,9 @@ class EPuckFacade(RobotFacade):
     Finish the current action with the given result and stop the motors.
 
     This is a small convenience to keep update() tidy.
+
+    @param result ActionResult to record.
+    @return None
     """
 
     def _finishAction(self, result: ActionResult) -> None:
@@ -631,8 +666,8 @@ class EPuckFacade(RobotFacade):
 
     The mapping assumes:
     - self._mazeOrigin = (originX, originY) is the centre of cell (0, 0).
-    - Columns increase to the right → +X direction.
-    - Rows increase downward in the maze → -Y direction.
+    - Columns increase to the right -> +X direction.
+    - Rows increase downward in the maze -> -Y direction.
 
     Therefore:
         x = originX + col * cellSize
@@ -646,6 +681,12 @@ class EPuckFacade(RobotFacade):
         xWorld = self._mazeOrigin[0] + cell[1] * self._cellSize
         yWorld = self._mazeOrigin[1] - cell[0] * self._cellSize
         return (xWorld, yWorld)
+
+    """
+    Read raw IR sensor values.
+
+    @return List of sensor readings.
+    """
 
     def _readIrRaw(self) -> list[float]:
         return [s.getValue() for s in self._irSensors]

@@ -10,4 +10,4 @@ textFiles: -1
 globalOptionalRendering: DistanceSensorRays
 consoles: Console:All:All
 renderingDevicePerspectives: e-puck-maze:camera;0;1;0;0
-renderingDevicePerspectives: robot:display;1;1;0;0
+renderingDevicePerspectives: robot:TIME_DISPLAY;1;1;0;0

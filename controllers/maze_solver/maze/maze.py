@@ -358,7 +358,7 @@ class Maze:
                 south = chars[Direction.SOUTH]
                 west = chars[Direction.WEST]
 
-                # Build the cell’s three-line ASCII block:
+                # Build the cell's three-line ASCII block:
                 #   top:    "  N   "
                 #   middle: "W C E "
                 #   bottom: "  S   "

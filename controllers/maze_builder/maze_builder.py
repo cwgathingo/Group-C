@@ -10,11 +10,11 @@ from maze_shared.maze_config import ROWS, COLS, CELL_SIZE, MAZE_ORIGIN, SEED
 
 Cell = Tuple[int, int]
 
-# Maze dimensions – must match MazeController
+# Maze dimensions - must match MazeController
 # ROWS = 4
 # COLS = 4
 
-# Geometry – must match your controller setup:
+# Geometry - must match your controller setup:
 #   cellSizeMeters = 0.15
 #   mazeOriginWorld = (-0.225, 0.225)
 # CELL_SIZE = 0.15
@@ -23,22 +23,26 @@ Cell = Tuple[int, int]
 ORIGIN_X, ORIGIN_Y = MAZE_ORIGIN
 
 
-def generate_perfect_maze(
+"""
+Depth-first search (iterative) returning a set of open edges.
+
+@param rows Number of maze rows.
+@param cols Number of maze columns.
+@param rng Random number generator to use.
+@return Set of open edges between adjacent cells.
+"""
+
+
+def generatePerfectMaze(
     rows: int, cols: int, rng: random.Random
 ) -> Set[tuple[Cell, Cell]]:
-    """
-    Depth-first search (recursive backtracker style, but iterative)
-    that returns a set of OPEN edges.
-    Each edge is stored as ((r1, c1), (r2, c2)) with endpoints sorted,
-    so order is deterministic.
-    """
     stack: List[Cell] = []
     visited = [[False] * cols for _ in range(rows)]
-    open_edges: Set[tuple[Cell, Cell]] = set()
+    openEdges: Set[tuple[Cell, Cell]] = set()
 
     def neighbours(cell: Cell):
         r, c = cell
-        # Fixed neighbour order → determinism given RNG
+        # Fixed neighbour order -> determinism given RNG
         for dr, dc in [(-1, 0), (0, 1), (1, 0), (0, -1)]:
             nr, nc = r + dr, c + dc
             if 0 <= nr < rows and 0 <= nc < cols:
@@ -59,44 +63,61 @@ def generate_perfect_maze(
         visited[nxt[0]][nxt[1]] = True
 
         edge = tuple(sorted([current, nxt]))
-        open_edges.add(edge)
+        openEdges.add(edge)
 
         stack.append(nxt)
 
-    return open_edges
+    return openEdges
 
 
 # ---------- Geometry helpers ----------
 
 
-def vertical_wall_pos(r: int, c: int) -> Tuple[float, float]:
-    """
-    Position of a vertical wall segment between (r, c) and (r, c+1).
-    For borders we allow c = -1 (left of col 0) and c = COLS-1 (right of last).
-    """
+"""
+Position of a vertical wall segment between (r, c) and (r, c+1).
+For borders we allow c = -1 (left of col 0) and c = COLS-1 (right of last).
+
+@param r Row index.
+@param c Column index.
+@return (x, y) translation for the wall.
+"""
+
+
+def verticalWallPos(r: int, c: int) -> Tuple[float, float]:
     x = ORIGIN_X + (c + 0.5) * CELL_SIZE
     y = ORIGIN_Y - r * CELL_SIZE
     return x, y
 
 
-def horizontal_wall_pos(r: int, c: int) -> Tuple[float, float]:
-    """
-    Position of a horizontal wall segment between (r, c) and (r+1, c).
-    For borders we allow r = -1 (above row 0) and r = ROWS-1 (below last).
-    """
+"""
+Position of a horizontal wall segment between (r, c) and (r+1, c).
+For borders we allow r = -1 (above row 0) and r = ROWS-1 (below last).
+
+@param r Row index.
+@param c Column index.
+@return (x, y) translation for the wall.
+"""
+
+
+def horizontalWallPos(r: int, c: int) -> Tuple[float, float]:
     x = ORIGIN_X + c * CELL_SIZE
     y = ORIGIN_Y - (r + 0.5) * CELL_SIZE
     return x, y
 
 
-def build_border_walls(supervisor: Supervisor) -> None:
-    """
-    Remove all existing Wall nodes and create a rectangular frame of
-    Wall segments around the 4x4 cell grid.
+"""
+Remove all existing Wall nodes and create a rectangular frame of
+Wall segments around the 4x4 cell grid.
 
-    This step ignores the maze connectivity; it's just to verify that
-    our coordinates and sizes are correct.
-    """
+This step ignores the maze connectivity; it's just to verify that
+our coordinates and sizes are correct.
+
+@param supervisor Webots Supervisor controlling the world.
+@return None
+"""
+
+
+def buildBorderWalls(supervisor: Supervisor) -> None:
     root = supervisor.getRoot()
     children = root.getField("children")
 
@@ -114,14 +135,14 @@ def build_border_walls(supervisor: Supervisor) -> None:
     # 2) Add top and bottom border (horizontal walls)
     for c in range(COLS):
         # Top border: between "virtual row -1" and row 0
-        x, y = horizontal_wall_pos(-1, c)
+        x, y = horizontalWallPos(-1, c)
         children.importMFNodeFromString(
             -1,
             f"Wall {{ translation {x} {y} 0 size {CELL_SIZE} 0.01 0.05 }}",
         )
 
         # Bottom border: between row ROWS-1 and "virtual row ROWS"
-        x, y = horizontal_wall_pos(ROWS - 1, c)
+        x, y = horizontalWallPos(ROWS - 1, c)
         children.importMFNodeFromString(
             -1,
             f"Wall {{ translation {x} {y} 0 size {CELL_SIZE} 0.01 0.05 }}",
@@ -130,14 +151,14 @@ def build_border_walls(supervisor: Supervisor) -> None:
     # 3) Add left and right border (vertical walls)
     for r in range(ROWS):
         # Left border: between "virtual col -1" and col 0
-        x, y = vertical_wall_pos(r, -1)
+        x, y = verticalWallPos(r, -1)
         children.importMFNodeFromString(
             -1,
             f"Wall {{ translation {x} {y} 0 size 0.01 {CELL_SIZE} 0.05 }}",
         )
 
         # Right border: between col COLS-1 and "virtual col COLS"
-        x, y = vertical_wall_pos(r, COLS - 1)
+        x, y = verticalWallPos(r, COLS - 1)
         children.importMFNodeFromString(
             -1,
             f"Wall {{ translation {x} {y} 0 size 0.01 {CELL_SIZE} 0.05 }}",
@@ -146,29 +167,35 @@ def build_border_walls(supervisor: Supervisor) -> None:
     print("[maze_builder] border walls created")
 
 
-def build_internal_walls(
-    supervisor: Supervisor, open_edges: Set[tuple[Cell, Cell]]
-) -> None:
-    """
-    Create internal walls based on the maze connectivity in open_edges.
+"""
+Create internal walls based on the maze connectivity in openEdges.
 
-    For every pair of adjacent cells:
-      - If the edge is in open_edges → NO wall (passage).
-      - Otherwise → add a wall segment at the boundary between them.
-    """
+For every pair of adjacent cells:
+  - If the edge is in openEdges -> NO wall (passage).
+  - Otherwise -> add a wall segment at the boundary between them.
+
+@param supervisor Webots Supervisor controlling the world.
+@param openEdges Set of passages that remain open between adjacent cells.
+@return None
+"""
+
+
+def buildInternalWalls(
+    supervisor: Supervisor, openEdges: Set[tuple[Cell, Cell]]
+) -> None:
     root = supervisor.getRoot()
     children = root.getField("children")
 
-    def is_open(a: Cell, b: Cell) -> bool:
-        return tuple(sorted([a, b])) in open_edges
+    def isOpen(a: Cell, b: Cell) -> bool:
+        return tuple(sorted([a, b])) in openEdges
 
     # --- Vertical internal walls (between (r,c) and (r,c+1)) ---
     for r in range(ROWS):
         for c in range(COLS - 1):
             a = (r, c)
             b = (r, c + 1)
-            if not is_open(a, b):
-                x, y = vertical_wall_pos(r, c)
+            if not isOpen(a, b):
+                x, y = verticalWallPos(r, c)
                 children.importMFNodeFromString(
                     -1,
                     f"Wall {{ translation {x} {y} 0 size 0.01 {CELL_SIZE} 0.05 }}",
@@ -179,8 +206,8 @@ def build_internal_walls(
         for c in range(COLS):
             a = (r, c)
             b = (r + 1, c)
-            if not is_open(a, b):
-                x, y = horizontal_wall_pos(r, c)
+            if not isOpen(a, b):
+                x, y = horizontalWallPos(r, c)
                 children.importMFNodeFromString(
                     -1,
                     f"Wall {{ translation {x} {y} 0 size {CELL_SIZE} 0.01 0.05 }}",
@@ -189,11 +216,16 @@ def build_internal_walls(
     print("[maze_builder] internal walls created")
 
 
-def update_rectangle_arena(supervisor: Supervisor) -> None:
-    """
-    Find the RectangleArena node and update its size / tile size / wall height
-    based on ROWS, COLS, CELL_SIZE from the shared config.
-    """
+"""
+Find the RectangleArena node and update its size / tile size / wall height
+based on ROWS, COLS, CELL_SIZE from the shared config.
+
+@param supervisor Webots Supervisor controlling the world.
+@return None
+"""
+
+
+def updateRectangleArena(supervisor: Supervisor) -> None:
     root = supervisor.getRoot()
     children = root.getField("children")
 
@@ -211,89 +243,114 @@ def update_rectangle_arena(supervisor: Supervisor) -> None:
         return
 
     # Compute desired sizes from config
-    floor_width = COLS * CELL_SIZE
-    floor_height = ROWS * CELL_SIZE
+    floorWidth = COLS * CELL_SIZE
+    floorHeight = ROWS * CELL_SIZE
 
-    tile_width = 2.0 * CELL_SIZE  # so each checker ≈ one maze cell visually
-    tile_height = 2.0 * CELL_SIZE
+    tileWidth = 2.0 * CELL_SIZE  # so each checker ~ one maze cell visually
+    tileHeight = 2.0 * CELL_SIZE
 
     # Update fields
-    floor_size_field = arena_node.getField("floorSize")
-    tile_size_field = arena_node.getField("floorTileSize")
-    wall_height_field = arena_node.getField("wallHeight")
+    floorSizeField = arena_node.getField("floorSize")
+    tileSizeField = arena_node.getField("floorTileSize")
+    wallHeightField = arena_node.getField("wallHeight")
 
-    if floor_size_field is not None:
-        floor_size_field.setSFVec2f([floor_width, floor_height])
+    if floorSizeField is not None:
+        floorSizeField.setSFVec2f([floorWidth, floorHeight])
 
-    if tile_size_field is not None:
-        tile_size_field.setSFVec2f([tile_width, tile_height])
+    if tileSizeField is not None:
+        tileSizeField.setSFVec2f([tileWidth, tileHeight])
 
-    if wall_height_field is not None:
-        wall_height_field.setSFFloat(0.001)  # almost flat
+    if wallHeightField is not None:
+        wallHeightField.setSFFloat(0.001)  # almost flat
 
     print(
         "[maze_builder] RectangleArena updated: "
-        f"floorSize=({floor_width:.3f}, {floor_height:.3f}), "
-        f"floorTileSize=({tile_width:.3f}, {tile_height:.3f}), "
+        f"floorSize=({floorWidth:.3f}, {floorHeight:.3f}), "
+        f"floorTileSize=({tileWidth:.3f}, {tileHeight:.3f}), "
         "wallHeight=0.001"
     )
 
 
-def cell_to_world_center(cell: Cell) -> tuple[float, float]:
+"""
+Convert a maze cell to its world centre coordinates.
+
+@param cell Maze cell as (row, col).
+@return Tuple (x, y) in world coordinates.
+"""
+
+
+def cellToWorldCenter(cell: Cell) -> tuple[float, float]:
     r, c = cell
     x = ORIGIN_X + c * CELL_SIZE
     y = ORIGIN_Y - r * CELL_SIZE
     return x, y
 
 
-def move_robot_to_cell(supervisor: Supervisor, cell: Cell) -> None:
-    """
-    Move MAZE_ROBOT to the centre of the given maze cell.
-    """
-    robot_node = supervisor.getFromDef("MAZE_ROBOT")
-    if robot_node is None:
+"""
+Move MAZE_ROBOT to the centre of the given maze cell.
+
+@param supervisor Webots Supervisor controlling the world.
+@param cell Target cell (row, col).
+@return None
+"""
+
+
+def moveRobotToCell(supervisor: Supervisor, cell: Cell) -> None:
+    robotNode = supervisor.getFromDef("MAZE_ROBOT")
+    if robotNode is None:
         print("[maze_builder] WARNING: MAZE_ROBOT not found; cannot move robot")
         return
 
-    tx_field = robot_node.getField("translation")
-    if tx_field is None:
+    txField = robotNode.getField("translation")
+    if txField is None:
         print("[maze_builder] WARNING: robot has no translation field")
         return
 
-    x, y = cell_to_world_center(cell)
-    current = tx_field.getSFVec3f()
+    x, y = cellToWorldCenter(cell)
+    current = txField.getSFVec3f()
     z = current[2] if len(current) >= 3 else 0.0
 
-    tx_field.setSFVec3f([x, y, z])
+    txField.setSFVec3f([x, y, z])
     print(f"[maze_builder] moved robot to cell {cell} at ({x:.3f}, {y:.3f})")
 
 
-def choose_start_and_goal(rng: random.Random) -> tuple[Cell, Cell]:
-    """
-    Choose a random start cell on the bottom row and a random goal cell on the top row.
-    Both are guaranteed to be adjacent to opposite outer walls.
-    """
-    start_row = ROWS - 1  # bottom
-    goal_row = 0  # top
+"""
+Choose a random start cell on the bottom row and a random goal cell on the top row.
+Both are guaranteed to be adjacent to opposite outer walls.
 
-    start_col = rng.randrange(COLS)
-    goal_col = rng.randrange(COLS)
-
-    start = (start_row, start_col)
-    goal = (goal_row, goal_col)
-
-    print(f"[maze_builder] chosen start={start}, goal={goal}")
-    return start, goal
+@param rng Random number generator.
+@return Tuple (startCell, goalCell).
+"""
 
 
-def place_goal_marker(supervisor: Supervisor, goal_cell: Cell) -> None:
-    """
-    Place a small visual marker (green cylinder) at the centre of the goal cell.
-    """
+def chooseStartAndGoal(rng: random.Random) -> tuple[Cell, Cell]:
+    startRow = ROWS - 1  # bottom
+    goalRow = 0  # top
+
+    startCol = rng.randrange(COLS)
+    goalCol = rng.randrange(COLS)
+
+    startCell = (startRow, startCol)
+    goalCell = (goalRow, goalCol)
+
+    print(f"[maze_builder] chosen start={startCell}, goal={goalCell}")
+    return startCell, goalCell
+
+
+"""
+Place a small visual marker (green cylinder) at the centre of the goal cell.
+
+@param supervisor Webots Supervisor controlling the world.
+@param goalCell Goal cell coordinates.
+@return None
+"""
+
+
+def placeGoalMarker(supervisor: Supervisor, goalCell: Cell) -> None:
     root = supervisor.getRoot()
     children = root.getField("children")
 
-    x, y = cell_to_world_center(goal_cell)
+    x, y = cellToWorldCenter(goalCell)
 
     node_string = f"""
 Solid {{
@@ -316,9 +373,7 @@ Solid {{
 }}
 """
     children.importMFNodeFromString(-1, node_string)
-    print(
-        f"[maze_builder] placed goal marker at cell {goal_cell} at ({x:.3f}, {y:.3f})"
-    )
+    print(f"[maze_builder] placed goal marker at cell {goalCell} at ({x:.3f}, {y:.3f})")
 
 
 DYNAMIC_CONFIG_PATH = os.path.join(
@@ -329,10 +384,20 @@ DYNAMIC_CONFIG_PATH = os.path.join(
 )
 
 
-def write_dynamic_config(start_cell: Cell, goal_cell: Cell, seed: int) -> None:
-    content = f"""# AUTO-GENERATED AT RUNTIME — DO NOT EDIT
-START = ({start_cell[0]}, {start_cell[1]})
-GOAL = ({goal_cell[0]}, {goal_cell[1]})
+"""
+Write the runtime-generated config values for the maze controller.
+
+@param startCell Selected start cell.
+@param goalCell Selected goal cell.
+@param seed      Random seed used.
+@return None
+"""
+
+
+def writeDynamicConfig(startCell: Cell, goalCell: Cell, seed: int) -> None:
+    content = f"""# AUTO-GENERATED AT RUNTIME - DO NOT EDIT
+START = ({startCell[0]}, {startCell[1]})
+GOAL = ({goalCell[0]}, {goalCell[1]})
 SEED = {seed}
 ROWS = {ROWS}
 COLS = {COLS}
@@ -346,8 +411,17 @@ CELL_SIZE = {CELL_SIZE}
         print(f"[maze_builder] ERROR writing dynamic_config.py: {e}")
 
 
-def update_time_display(display, sim_time: float) -> None:
-    # Convert seconds → h:m:s:ms
+"""
+Render the simulation time onto the display.
+
+@param display Webots display device.
+@param sim_time Current simulation time in seconds.
+@return None
+"""
+
+
+def updateTimeDisplay(display, sim_time: float) -> None:
+    # Convert seconds -> h:m:s:ms
     total_ms = int(sim_time * 1000)
     hours = total_ms // (3600 * 1000)
     minutes = (total_ms // (60 * 1000)) % 60
@@ -364,20 +438,27 @@ def update_time_display(display, sim_time: float) -> None:
     display.drawText(time_str, 10, 10)
 
 
+"""
+Entry point for building the maze and signalling readiness.
+
+@return None
+"""
+
+
 def main():
     supervisor = Supervisor()
     timestep = int(supervisor.getBasicTimeStep()) or 32
 
-    time_display = supervisor.getDevice("TIME_DISPLAY")
-    time_display.setFont("Arial", 20, True)
+    timeDisplay = supervisor.getDevice("TIME_DISPLAY")
+    timeDisplay.setFont("Arial", 20, True)
 
     # Initialise world_ready to 0 for this run
-    robot_node = supervisor.getFromDef("MAZE_ROBOT")
-    custom_field = None
-    if robot_node is not None:
-        custom_field = robot_node.getField("customData")
-        if custom_field is not None:
-            custom_field.setSFString("world_ready=0")
+    robotNode = supervisor.getFromDef("MAZE_ROBOT")
+    customField = None
+    if robotNode is not None:
+        customField = robotNode.getField("customData")
+        if customField is not None:
+            customField.setSFString("world_ready=0")
             print("[maze_builder] world_ready initialised to 0")
 
     rng = random.Random(SEED)
@@ -385,30 +466,30 @@ def main():
     print(f"[maze_builder] started with seed={SEED}")
 
     # NEW: choose start & goal on opposite borders
-    start_cell, goal_cell = choose_start_and_goal(rng)
-    write_dynamic_config(start_cell, goal_cell, SEED)
+    startCell, goalCell = chooseStartAndGoal(rng)
+    writeDynamicConfig(startCell, goalCell, SEED)
 
-    update_rectangle_arena(supervisor)
-    move_robot_to_cell(supervisor, start_cell)
+    updateRectangleArena(supervisor)
+    moveRobotToCell(supervisor, startCell)
 
-    open_edges = generate_perfect_maze(ROWS, COLS, rng)
+    openEdges = generatePerfectMaze(ROWS, COLS, rng)
     print("[maze_builder] open passages (edges between cells):")
-    for edge in sorted(open_edges):
+    for edge in sorted(openEdges):
         print("  ", edge)
 
-    build_border_walls(supervisor)
-    build_internal_walls(supervisor, open_edges)
+    buildBorderWalls(supervisor)
+    buildInternalWalls(supervisor, openEdges)
 
     # NEW: place a visual marker at the goal cell
-    place_goal_marker(supervisor, goal_cell)
+    placeGoalMarker(supervisor, goalCell)
 
     # Mark world as ready *after* maze + robot placement + marker
-    if custom_field is not None:
-        custom_field.setSFString("world_ready=1")
+    if customField is not None:
+        customField.setSFString("world_ready=1")
         print("[maze_builder] world_ready set to 1")
 
     while supervisor.step(timestep) != -1:
-        update_time_display(time_display, supervisor.getTime())
+        updateTimeDisplay(timeDisplay, supervisor.getTime())
         pass
 
 

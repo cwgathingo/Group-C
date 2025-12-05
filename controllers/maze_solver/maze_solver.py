@@ -53,7 +53,7 @@ components.
 Responsibilities:
 - Own the Webots Robot instance.
 - Maintain the robot's belief about its current cell and orientation.
-- Drive the main control loop: sense → update map → choose action → move.
+- Drive the main control loop: sense -> update map -> choose action -> move.
 """
 
 
@@ -73,7 +73,8 @@ class MazeController:
     @param startDirection the direction of the robot at the start.
     @param goalCell Goal cell (row, col) for the robot.
     @param cellSizeMeters Size of one maze cell edge in meters.
-    @param mazeOriginWorld World (x, y) position of cell (0, 0) centr
+    @param mazeOriginWorld World (x, y) position of cell (0, 0) centre.
+    @return None
     """
 
     def __init__(
@@ -224,10 +225,15 @@ class MazeController:
                 )
 
     def _computeWavefront(self) -> List[List[int]]:
+        """
+        Compute a wavefront distance matrix from the goal to every cell.
+
+        @return Matrix of shortest path estimates (inf for unreachable).
+        """
         maze = self._maze
         (rows, cols) = maze.getShape()
 
-        # Initialise wavefront with +∞ everywhere.
+        # Initialise wavefront with +INF everywhere.
         wfMatrix: List[List[int]] = [[inf for _ in range(cols)] for _ in range(rows)]
 
         goal = maze.getGoal()
@@ -240,7 +246,7 @@ class MazeController:
         while frontier:
             cell = frontier.popleft()
             (row, col) = cell
-            CurrentDist = wfMatrix[row][col]
+            currentDistVal = wfMatrix[row][col]
 
             for direction in Direction:
                 passage = maze.getPassage(cell, direction)
@@ -249,26 +255,29 @@ class MazeController:
                 if passage == PassageState.BLOCKED:
                     continue
 
-                nCell = maze.getNeighbour(cell, direction)
-                if nCell is None:
+                neighbourCell = maze.getNeighbour(cell, direction)
+                if neighbourCell is None:
                     # Out of bounds (shouldn't happen if borders are BLOCKED,
                     # but this keeps things robust).
                     continue
 
-                (nr, nc) = nCell
-                nextDist = CurrentDist + 1
+                (nr, nc) = neighbourCell
+                nextDist = currentDistVal + 1
 
                 # Only update if we found a strictly shorter path
                 if nextDist < wfMatrix[nr][nc]:
                     wfMatrix[nr][nc] = nextDist
-                    frontier.append(nCell)
+                    frontier.append(neighbourCell)
 
         return wfMatrix
 
     """
     Pretty-print the wavefront matrix.
-    - INF (unreachable) cells are shown as '∞'
+    - INF (unreachable) cells are shown as 'INF'
     - All columns are aligned
+
+    @param wfMatrix Wavefront distance matrix to print.
+    @return None
     """
 
     def _printWavefront(self, wfMatrix: List[List[int]]):
@@ -276,14 +285,14 @@ class MazeController:
         rows = len(wfMatrix)
         cols = len(wfMatrix[0])
 
-        # Convert values to strings first (∞ for inf)
+        # Convert values to strings first (INF for inf)
         rowToPrint = []
         for r in range(rows):
             rowStr = []
             for c in range(cols):
                 v = wfMatrix[r][c]
                 if v == inf:
-                    rowStr.append("∞")
+                    rowStr.append("INF")
                 else:
                     rowStr.append(str(v))
             rowToPrint.append(rowStr)
@@ -357,10 +366,10 @@ class MazeController:
             return None
 
         # 4. Choose the best direction according to current heading
-        next_dir = self._choosePreferredDirection(candidateDirs)
+        nextDir = self._choosePreferredDirection(candidateDirs)
 
         # 5. Convert desired direction into a MotionAction
-        return self._directionToAction(next_dir)
+        return self._directionToAction(nextDir)
 
         # global pathIndex
         # global pathList
@@ -397,15 +406,21 @@ class MazeController:
         else:
             print("Warning: trying to execute unrecognized action: ", action)
 
-    """Stop all wheel motors."""
+    """
+    Stop all wheel motors.
+
+    @return None
+    """
 
     def _stopMotors(self) -> None:
         # TODO: set motor velocities to 0
         pass
 
-        """
+    """
     Optional fun routine for the end of the maze.
     Could spin the robot in place, flash LEDs, etc.
+
+    @return None
     """
 
     def _victoryCelebration(self) -> None:
@@ -423,6 +438,8 @@ class MazeController:
         2) Mark that cell as visited in the maze belief.
         3) Mark the passage back to the previous cell as OPEN.
         4) Print the updated ASCII map.
+
+    @return None
     """
 
     def _handleCompletedAction(self) -> None:
@@ -471,8 +488,11 @@ class MazeController:
     1. straight ahead
     2. right turn
     3. left turn
-    4. back (180°)
-        """
+    4. back (180 degrees)
+
+    @param candidates Directions leading to cells with distance-1.
+    @return Preferred direction according to heading.
+    """
 
     def _choosePreferredDirection(self, candidates: List[Direction]) -> Direction:
         heading = self._currentDirection
@@ -492,11 +512,14 @@ class MazeController:
     """
     Convert the desired heading into a single MotionAction
     (one atomic step for the high-level controller).
+
+    @param targetDir Desired maze heading.
+    @return Corresponding MotionAction to move/turn toward it.
     """
 
-    def _directionToAction(self, target_dir: Direction) -> MotionAction:
+    def _directionToAction(self, targetDir: Direction) -> MotionAction:
         heading = self._currentDirection
-        delta = (int(target_dir) - int(heading)) % 4
+        delta = (int(targetDir) - int(heading)) % 4
 
         if delta == 0:
             return MotionAction.MOVE_FORWARD_ONE_CELL
@@ -505,7 +528,7 @@ class MazeController:
         elif delta == 3:
             return MotionAction.TURN_LEFT_90
         else:
-            # 180° turn: choose one direction (right here), the second turn
+            # 180 degree turn: choose one direction (right here), the second turn
             # will be planned on the next call to _decideNextAction.
             return MotionAction.TURN_RIGHT_90
 

@@ -12,7 +12,7 @@ COLS: int = 6
 CELL_SIZE: float = 0.14
 
 
-def compute_maze_origin() -> Tuple[float, float]:
+def computeMazeOrigin() -> Tuple[float, float]:
     """
     Return the world (x, y) coordinates of the centre of cell (0, 0),
     assuming the world origin (0, 0) is at the centre of the maze.
@@ -26,6 +26,8 @@ def compute_maze_origin() -> Tuple[float, float]:
 
         origin_x = -((COLS - 1) * CELL_SIZE) / 2
         origin_y = +((ROWS - 1) * CELL_SIZE) / 2
+
+    @return Tuple (origin_x, origin_y) of cell (0, 0) centre.
     """
     origin_x = -((COLS - 1) * CELL_SIZE) / 2.0
     origin_y = +((ROWS - 1) * CELL_SIZE) / 2.0
@@ -33,7 +35,7 @@ def compute_maze_origin() -> Tuple[float, float]:
 
 
 # World position of cell (0, 0) centre (x, y)
-MAZE_ORIGIN: Tuple[float, float] = compute_maze_origin()
+MAZE_ORIGIN: Tuple[float, float] = computeMazeOrigin()
 
 # Default start/goal cells in maze coordinates (row, col)
 # These are just defaults; we can override them later via the supervisor.
