@@ -98,6 +98,8 @@ class MazeController:
         # Track the high-level action requested for execution.
         # None = no pending action (idle from planning perspective).
         self._pendingAction: Optional[MotionAction] = None
+        # Cache runtime config for status updates back to the supervisor
+        self._runtimeConfig: Dict[str, object] = {}
 
     """
     Main control loop.
@@ -120,11 +122,15 @@ class MazeController:
 
     def run(self) -> None:
         runtimeConfig = self._waitForRuntimeConfig()
+        self._runtimeConfig = runtimeConfig
         self._initialiseRuntimeState(runtimeConfig)
 
         if self._robotFacade is None or self._maze is None or self._currentCell is None:
             print("[maze_solver] Runtime configuration failed; stopping controller.")
             return
+
+        # Signal that the solver is running with the applied config
+        self._setStatus("running")
 
         while self._robot.step(self._timeStep) != -1:
 
@@ -144,6 +150,7 @@ class MazeController:
                 print("\n==============================")
                 print("  GOAL REACHED!  ")
                 print("==============================\n")
+                self._setStatus("goal")
                 # Optional: victory dance / spin / LED flash
                 self._victoryCelebration()
                 # Ensure motors are stopped
@@ -161,6 +168,7 @@ class MazeController:
             # Deal with edge cases, for example pathFinder doesn't have a path
             if action is None:
                 print("No action decided; stopping.")
+                self._setStatus("stuck")
                 self._stopMotors()
                 break
 
@@ -263,6 +271,37 @@ class MazeController:
             "startDir": parsed.get("startDir", self._defaultConfig["startDir"]),
         }
         return config
+
+    """
+    Send a status update back to the supervisor via customData.
+    Includes the last runtime config for context.
+    """
+
+    def _setStatus(self, status: str) -> None:
+        cfg = self._runtimeConfig or self._defaultConfig
+        try:
+            start = cfg.get("start", (0, 0))
+            goal = cfg.get("goal", (0, 0))
+            startDir = cfg.get("startDir", self._startDirection)
+            if isinstance(startDir, Direction):
+                startDir = startDir.name.lower()
+
+            entries = [
+                ("world_ready", "1"),
+                ("status", status),
+                ("start", f"{start[0]},{start[1]}"),
+                ("goal", f"{goal[0]},{goal[1]}"),
+                ("rows", str(cfg.get("rows", DEFAULT_ROWS))),
+                ("cols", str(cfg.get("cols", DEFAULT_COLS))),
+                ("cell_size", str(cfg.get("cell_size", DEFAULT_CELL_SIZE))),
+                ("seed", str(cfg.get("seed", DEFAULT_SEED))),
+                ("startDir", str(startDir)),
+            ]
+            payload = ";".join(f"{k}={v}" for k, v in entries) + ";"
+            if hasattr(self._robot, "setCustomData"):
+                self._robot.setCustomData(payload)
+        except Exception as exc:
+            print(f"[maze_solver] Warning: failed to set status '{status}': {exc}")
 
     """
     Convert a string into a Direction enum, defaulting to current start
