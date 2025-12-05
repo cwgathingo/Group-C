@@ -465,15 +465,7 @@ def main():
 
     while supervisor.step(timestep) != -1:
         updateTimeDisplay(timeDisplay, supervisor.getTime())
-        if customField is not None:
-            data = customField.getSFString() or ""
-            lower = data.lower()
-            if "status=goal" in lower:
-                print("[maze_builder] robot reported goal reached; stopping timer.")
-                break
-            if "status=stuck" in lower:
-                print("[maze_builder] robot reported stuck; stopping timer.")
-                break
+        pass
 
 
 if __name__ == "__main__":
