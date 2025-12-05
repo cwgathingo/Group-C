@@ -11,16 +11,6 @@ from maze_shared.maze_geometry import getCellCenterWorld
 
 Cell = Tuple[int, int]
 
-# Maze dimensions - must match MazeController
-# ROWS = 4
-# COLS = 4
-
-# Geometry - must match your controller setup:
-#   cellSizeMeters = 0.15
-#   mazeOriginWorld = (-0.225, 0.225)
-# CELL_SIZE = 0.15
-# ORIGIN_X = -0.225
-# ORIGIN_Y = 0.225
 ORIGIN_X, ORIGIN_Y = MAZE_ORIGIN
 
 
