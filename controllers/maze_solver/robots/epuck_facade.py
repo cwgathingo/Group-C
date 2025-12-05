@@ -17,24 +17,28 @@ from maze.maze import (
     Cell,
     Direction,
 )  # if Pylance complains, you can switch to relative later
+from maze_shared.maze_geometry import getCellCenterWorld
+from maze_shared.direction_utils import (
+    getDirectionDelta,
+    rotateDirectionCounterClockwise,
+)
 
 
 # --- Calibrated odometry parameters ---
-# These values were tuned against observed forward travel and turn angles
-# in Webots. They do NOT represent the physical real-world dimensions of
-# the e-puck; they are effective simulation scaling factors that make
-# encoder-based odometry match actual motion.
+# Effective wheel radius and track width for the Webots e-puck model.
+# These were tuned empirically so that encoder-based odometry matches
+# the simulated forward motion and turn angles. They do NOT necessarily
+# match the real e-puck’s physical dimensions.
 WHEEL_RADIUS = 0.02  # meters
 TRACK_WIDTH = 0.057
 
-# Tolerance Definitions
+# Position and heading tolerances used when checking motion completion.
 POSITION_TOLERANCE = 0.0005
 ANGLE_TOLERANCE = 0.03  # ~1.7 degrees
 
-# Sensors Wall Threshold
+# Proximity sensor thresholds for treating readings as "wall detected".
 IR_SESNOR_WALL_THRESHOLD = 80
 FRONT_SESNOR_WALL_THRESHOLD = 900
-
 
 """
 Convert a maze Direction into a world-frame orientation angle.
@@ -237,7 +241,17 @@ class EPuckFacade(RobotFacade):
     # ------------------------------------------------------------------
 
     """
-    Request: move forward exactly one maze cell.
+    Request: move the robot forward exactly one maze cell.
+
+    This sets up the internal state for a forward movement action:
+      - marks the robot as executing an action,
+      - determines the target maze cell based on the current heading,
+      - computes the target world pose for the cell centre,
+      - records the starting encoder values for odometry,
+      - starts both wheel motors at the configured base speed.
+
+    The actual motion is completed asynchronously by the update method
+    (_updateForwardAction), which monitors encoder-based progress.
 
     @return None
     """
@@ -278,9 +292,22 @@ class EPuckFacade(RobotFacade):
         self._requestTurn90(MotionAction.TURN_LEFT_90)
 
     """
-    Sense nearby passages using IR sensors.
+    Sense nearby passages using the e-puck IR sensors.
 
-    @return Mapping Direction -> Optional[bool] where True means wall detected.
+    The front, left and right proximity sensors, together with the
+    dedicated forward distance sensor, are used to determine whether
+    a wall is likely to be present adjacent to the robot relative to
+    its current heading.
+
+    The IR sensors provide reliable positive evidence of a wall only
+    when readings exceed a calibrated threshold. Readings below this
+    threshold cannot be interpreted as evidence that a passage is clear.
+    Therefore this method does not return False. Instead:
+      - True  : a wall is detected with sufficient confidence
+      - None  : no reliable observation (treated as UNKNOWN)
+
+    @return: Mapping Direction -> Optional[bool], where True indicates
+             a detected wall and None indicates no reliable reading.
     """
 
     def senseLocalPassages(self):
@@ -319,22 +346,11 @@ class EPuckFacade(RobotFacade):
         )
 
         currentDir = self._currentDirection
-        # Debug
-        # print(
-        #     "Heading after turn: ",
-        #     self._currentDirection,
-        #     "int=",
-        #     int(self._currentDirection),
-        #     "name=",
-        #     self._currentDirection.name,
-        # )
-        order = [Direction.EAST, Direction.NORTH, Direction.WEST, Direction.SOUTH]
-        idx = order.index(currentDir)
 
         frontDir = currentDir
-        leftDir = order[(idx + 1) % 4]
-        rightDir = order[(idx - 1) % 4]
-        backDir = order[(idx + 2) % 4]
+        leftDir = rotateDirectionCounterClockwise(currentDir, 1)
+        rightDir = rotateDirectionCounterClockwise(currentDir, -1)
+        backDir = rotateDirectionCounterClockwise(currentDir, 2)
 
         return {
             frontDir: isFrontBlocked,
@@ -353,10 +369,22 @@ class EPuckFacade(RobotFacade):
         self._requestTurn90(MotionAction.TURN_RIGHT_90)
 
     """
-    Internal helper to start a 90-degree turn.
+    Internal helper to initiate a 90-degree turn action.
 
-    @param action MotionAction.TURN_LEFT_90 or MotionAction.TURN_RIGHT_90.
-    @return None
+    This method:
+      - marks the robot as executing an action,
+      - stores the selected turn action (left or right),
+      - records the starting encoder values for odometry,
+      - sets the turn sign (+1 for left, -1 for right),
+      - and commands an in-place rotation by driving the wheels in
+        opposite directions at the configured turn speed.
+
+    The turn is completed asynchronously by _updateTurnAction, which
+    monitors the encoder-based heading change until approximately
+    90 degrees of rotation is reached.
+
+    @param action: MotionAction.TURN_LEFT_90 or MotionAction.TURN_RIGHT_90
+    @return: None
     """
 
     def _requestTurn90(self, action: MotionAction) -> None:
@@ -383,9 +411,26 @@ class EPuckFacade(RobotFacade):
 
     """
     Update logic for MOVE_FORWARD_ONE_CELL.
-    stops when the target cell centre is reached or slightly overshot.
 
-    @return None
+    Wheel encoder readings are converted to left and right travel
+    distances (dl, dr) using the calibrated wheel radius. The forward
+    displacement is estimated as:
+
+        dist = 0.5 * (dl + dr)
+
+    which corresponds to the standard differential-drive odometry model
+    described in Siegwart, Nourbakhsh and Scaramuzza, Introduction to
+    Autonomous Mobile Robots, Chapter 5, Section 5.2.4
+    (Delta s = (Delta s_r + Delta s_l) / 2).
+
+    During motion, a proportional correction term based on the difference
+    between right and left wheel travel (dr - dl) adjusts the motor
+    velocities to keep the robot approximately straight.
+
+    Once the estimated travelled distance reaches one cell length (within
+    POSITION_TOLERANCE), the motors are stopped, the robot's internal pose
+    is snapped to the precomputed target cell centre, and the action is
+    marked as complete.
     """
 
     def _updateForwardAction(self) -> None:
@@ -400,12 +445,11 @@ class EPuckFacade(RobotFacade):
         dist = 0.5 * (dl + dr)
 
         # 2. Simple straightness correction (odometry-only)
-        wheel_delta = dr - dl  # >0 => right travelled further than left
+        wheelDelta = dr - dl  # >0 => right travelled further than left
         K = 5.0
-        correction = K * wheel_delta
-
-        left = self._baseForwardSpeed - correction
-        right = self._baseForwardSpeed + correction
+        correction = K * wheelDelta
+        left = self._baseForwardSpeed + correction
+        right = self._baseForwardSpeed - correction
 
         # Clamp to motor limits
         left = max(-self._maxSpeed, min(self._maxSpeed, left))
@@ -437,10 +481,29 @@ class EPuckFacade(RobotFacade):
     """
     Update logic for 90 degree turn actions (left or right).
 
-    Uses wheel encoder odometry to estimate heading change and stops when
-    the rotation magnitude is approximately 90 degrees (within ANGLE_TOLERANCE).
+    Wheel encoder readings are converted to left and right travel
+    distances (dl, dr) using the calibrated wheel radius. The
+    incremental heading change for the differential-drive robot is
+    estimated as
 
-    @return None
+        dtheta = (dr - dl) / TRACK_WIDTH,
+
+    consistent with the standard odometry model for differential-drive
+    robots (see Siegwart, Nourbakhsh and Scaramuzza, Introduction to
+    Autonomous Mobile Robots, Chapter 5, Section 5.2.4).
+
+    The controller continues commanding a turn until the magnitude of
+    the estimated rotation |dtheta| is approximately 90 degrees
+    (within ANGLE_TOLERANCE). At that point it:
+      - stops both wheel motors,
+      - updates the discrete maze-facing direction using the sign of
+        the turn, and
+      - snaps the stored world pose orientation to the corresponding
+        cardinal heading.
+
+    This keeps the internal pose representation aligned with the
+    idealized grid while using encoder odometry only to detect when
+    the 90 degree turn is complete.
     """
 
     def _updateTurnAction(self) -> None:
@@ -451,29 +514,28 @@ class EPuckFacade(RobotFacade):
         dl = (l - self._startLeftEnc) * WHEEL_RADIUS
         dr = (r - self._startRightEnc) * WHEEL_RADIUS
 
-        # Approximate heading change for differential drive
-        # Positive dtheta = CCW (left turn), negative = CW (right turn)
-        dtheta = (dr - dl) / TRACK_WIDTH  # signed heading change
-        turned = abs(dtheta)  # magnitude of rotation
+        # Estimate heading change for differential drive.
+        # Positive dtheta = CCW (left turn), negative = CW (right turn).
+        dtheta = (dr - dl) / TRACK_WIDTH  # signed rotation
+        turned = abs(dtheta)  # rotation magnitude
         target = 0.5 * pi  # 90 degrees
 
         # Debug
         # print(f"[EPuckFacade] turn action={self._currentAction.name} dtheta={dtheta:.3f} rad")
 
-        # Have we turned (roughly) 90 degrees?
+        # If we are still outside the [target ± ANGLE_TOLERANCE] band,
+        # we have not completed the 90-degree turn yet, so continue turning.
         if abs(turned - target) > ANGLE_TOLERANCE:
-            # Still too far from 90 degrees, keep turning
             return
 
-        # Stop motors
+        # Stop motors (target reached)
         self._leftMotor.setVelocity(0.0)
         self._rightMotor.setVelocity(0.0)
 
-        # Rotate discrete heading by the same sign as the turn
-        order = [Direction.EAST, Direction.NORTH, Direction.WEST, Direction.SOUTH]
-        idx = order.index(self._currentDirection)
-        idx = (idx + self._turnSign) % 4
-        self._currentDirection = order[idx]
+        # Rotate discrete heading by the sign of the commanded turn
+        self._currentDirection = rotateDirectionCounterClockwise(
+            self._currentDirection, self._turnSign
+        )
 
         # Snap worldPose theta to the exact cardinal direction
         x, y, _oldTheta = self._worldPose
@@ -538,6 +600,8 @@ class EPuckFacade(RobotFacade):
         # TODO: stop motors
         # self._leftMotor.setVelocity(0.0)
         # self._rightMotor.setVelocity(0.0)
+        # TODO: wire this into an emergency stop path (e.g. if a sudden wall
+        # is detected while moving forward) once higher-level detection exists.
 
         if self._state == RobotState.EXECUTING_ACTION:
             self._lastActionResult = ActionResult.ABORTED
@@ -576,11 +640,9 @@ class EPuckFacade(RobotFacade):
     def _setWorldPose(self) -> None:
         # --- Continuous pose (world coordinates) ---
         # Start exactly at the centre of the start cell.
-        (row, col) = self._currentCell
-        (originX, originY) = self._mazeOrigin
-
-        worldX = originX + col * self._cellSize
-        worldY = originY - row * self._cellSize
+        worldX, worldY = getCellCenterWorld(
+            self._currentCell, self._mazeOrigin, self._cellSize
+        )
         theta = _directionToWorldTheta(self._currentDirection)
 
         self._worldPose = (worldX, worldY, theta)
@@ -649,17 +711,9 @@ class EPuckFacade(RobotFacade):
     """
 
     def _getForwardCell(self) -> Cell:
+        dRow, dCol = getDirectionDelta(self._currentDirection)
         r, c = self._currentCell
-        dir = self._currentDirection
-        if dir == Direction.NORTH:
-            r -= 1
-        elif dir == Direction.SOUTH:
-            r += 1
-        elif dir == Direction.EAST:
-            c += 1
-        else:
-            c -= 1
-        return (r, c)
+        return (r + dRow, c + dCol)
 
     """
     Convert a maze cell (row, col) to the world coordinates of its centre.
@@ -678,9 +732,7 @@ class EPuckFacade(RobotFacade):
     """
 
     def _cellToWorld(self, cell: Cell) -> Vec2:
-        xWorld = self._mazeOrigin[0] + cell[1] * self._cellSize
-        yWorld = self._mazeOrigin[1] - cell[0] * self._cellSize
-        return (xWorld, yWorld)
+        return getCellCenterWorld(cell, self._mazeOrigin, self._cellSize)
 
     """
     Read raw IR sensor values.

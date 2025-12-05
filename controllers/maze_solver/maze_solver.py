@@ -360,6 +360,19 @@ class MazeController:
                 )
 
     """
+    Compute a wavefront (NF1/grassfire) distance transform from the goal,
+    using a breadth-first expansion. Each traversable neighbour of a cell
+    is assigned a cost one greater than its parent's, producing a discrete
+    distance field over the maze.
+
+    This corresponds to the wavefront planner described in:
+
+    Siegwart, R., Nourbakhsh, I. & Scaramuzza, D. (2011).
+    Introduction to Autonomous Mobile Robots (2nd ed.). MIT Press.
+    See Section 6.3.1.2, discussion of breadth-first search and the
+    wavefront expansion algorithm (NF1/grassfire). 
+    """
+    """
     Compute a wavefront distance matrix from the goal to every cell.
 
     @return Matrix of shortest path estimates (inf for unreachable).
@@ -450,14 +463,22 @@ class MazeController:
         print()
 
     """
-    Decide the next action for the robot.
+    Decide the next high-level motion action based on the current
+    wavefront distances and maze belief.
 
-    For now, this method is a placeholder. In the final system, it will:
-    - Use the Maze belief (passages and visited cells).
-    - Call a pathfinding or behaviour-based algorithm.
-    - Return a symbolic action such as:
-        "MOVE_FORWARD_ONE_CELL", "TURN_LEFT", "TURN_RIGHT"
-      or a more structured type.
+    The policy is:
+      1) Recompute the wavefront distance matrix from the goal.
+      2) At the current cell, consider all non-BLOCKED neighbours
+         (UNKNOWN passages are treated as traversable).
+      3) Select neighbours whose wavefront value is exactly
+         currentDist - 1 (i.e. one step closer to the goal).
+      4) If there are multiple candidates, choose the direction that
+         best matches the robot’s current heading.
+      5) Convert the chosen direction into a MotionAction.
+
+    If no neighbour with a finite distance-1 value exists, the method
+    returns None to signal that no progress toward the goal is possible
+    under the current belief.
 
     @return A value representing the chosen action.
     """
@@ -506,14 +527,6 @@ class MazeController:
 
         # 5. Convert desired direction into a MotionAction
         return self._directionToAction(nextDir)
-
-        # global pathIndex
-        # global pathList
-        # if pathIndex > len(pathList) - 1:
-        #     return None
-        # action = pathList[pathIndex]
-        # pathIndex += 1
-        # return action
 
     """
     Execute one atomic action and update the belief pose.

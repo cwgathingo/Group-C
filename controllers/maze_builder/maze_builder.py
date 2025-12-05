@@ -7,6 +7,11 @@ from controller import Supervisor
 import random
 from typing import Tuple, List, Set
 from maze_shared.maze_config import ROWS, COLS, CELL_SIZE, MAZE_ORIGIN, SEED
+from maze_shared.maze_geometry import (
+    getCellCenterWorld,
+    getHorizontalWallPosition,
+    getVerticalWallPosition,
+)
 
 Cell = Tuple[int, int]
 
@@ -23,6 +28,12 @@ Cell = Tuple[int, int]
 ORIGIN_X, ORIGIN_Y = MAZE_ORIGIN
 
 
+"""
+This method corresponds to the Recursive Backtracking algorithm used
+for generating perfect mazes, defined in Bellot et al. (2021), Section 4.6,
+with the theoretical definition of perfect mazes as spanning trees
+given in Section 2.
+"""
 """
 Depth-first search (iterative) returning a set of open edges.
 
@@ -74,38 +85,6 @@ def generatePerfectMaze(
 
 
 """
-Position of a vertical wall segment between (r, c) and (r, c+1).
-For borders we allow c = -1 (left of col 0) and c = COLS-1 (right of last).
-
-@param r Row index.
-@param c Column index.
-@return (x, y) translation for the wall.
-"""
-
-
-def verticalWallPos(r: int, c: int) -> Tuple[float, float]:
-    x = ORIGIN_X + (c + 0.5) * CELL_SIZE
-    y = ORIGIN_Y - r * CELL_SIZE
-    return x, y
-
-
-"""
-Position of a horizontal wall segment between (r, c) and (r+1, c).
-For borders we allow r = -1 (above row 0) and r = ROWS-1 (below last).
-
-@param r Row index.
-@param c Column index.
-@return (x, y) translation for the wall.
-"""
-
-
-def horizontalWallPos(r: int, c: int) -> Tuple[float, float]:
-    x = ORIGIN_X + c * CELL_SIZE
-    y = ORIGIN_Y - (r + 0.5) * CELL_SIZE
-    return x, y
-
-
-"""
 Remove all existing Wall nodes and create a rectangular frame of
 Wall segments around the 4x4 cell grid.
 
@@ -135,14 +114,14 @@ def buildBorderWalls(supervisor: Supervisor) -> None:
     # 2) Add top and bottom border (horizontal walls)
     for c in range(COLS):
         # Top border: between "virtual row -1" and row 0
-        x, y = horizontalWallPos(-1, c)
+        x, y = getHorizontalWallPosition(-1, c, MAZE_ORIGIN, CELL_SIZE)
         children.importMFNodeFromString(
             -1,
             f"Wall {{ translation {x} {y} 0 size {CELL_SIZE} 0.01 0.05 }}",
         )
 
         # Bottom border: between row ROWS-1 and "virtual row ROWS"
-        x, y = horizontalWallPos(ROWS - 1, c)
+        x, y = getHorizontalWallPosition(ROWS - 1, c, MAZE_ORIGIN, CELL_SIZE)
         children.importMFNodeFromString(
             -1,
             f"Wall {{ translation {x} {y} 0 size {CELL_SIZE} 0.01 0.05 }}",
@@ -151,14 +130,14 @@ def buildBorderWalls(supervisor: Supervisor) -> None:
     # 3) Add left and right border (vertical walls)
     for r in range(ROWS):
         # Left border: between "virtual col -1" and col 0
-        x, y = verticalWallPos(r, -1)
+        x, y = getVerticalWallPosition(r, -1, MAZE_ORIGIN, CELL_SIZE)
         children.importMFNodeFromString(
             -1,
             f"Wall {{ translation {x} {y} 0 size 0.01 {CELL_SIZE} 0.05 }}",
         )
 
         # Right border: between col COLS-1 and "virtual col COLS"
-        x, y = verticalWallPos(r, COLS - 1)
+        x, y = getVerticalWallPosition(r, COLS - 1, MAZE_ORIGIN, CELL_SIZE)
         children.importMFNodeFromString(
             -1,
             f"Wall {{ translation {x} {y} 0 size 0.01 {CELL_SIZE} 0.05 }}",
@@ -195,7 +174,7 @@ def buildInternalWalls(
             a = (r, c)
             b = (r, c + 1)
             if not isOpen(a, b):
-                x, y = verticalWallPos(r, c)
+                x, y = getVerticalWallPosition(r, c, MAZE_ORIGIN, CELL_SIZE)
                 children.importMFNodeFromString(
                     -1,
                     f"Wall {{ translation {x} {y} 0 size 0.01 {CELL_SIZE} 0.05 }}",
@@ -207,7 +186,7 @@ def buildInternalWalls(
             a = (r, c)
             b = (r + 1, c)
             if not isOpen(a, b):
-                x, y = horizontalWallPos(r, c)
+                x, y = getHorizontalWallPosition(r, c, MAZE_ORIGIN, CELL_SIZE)
                 children.importMFNodeFromString(
                     -1,
                     f"Wall {{ translation {x} {y} 0 size {CELL_SIZE} 0.01 0.05 }}",
@@ -272,21 +251,6 @@ def updateRectangleArena(supervisor: Supervisor) -> None:
 
 
 """
-Convert a maze cell to its world centre coordinates.
-
-@param cell Maze cell as (row, col).
-@return Tuple (x, y) in world coordinates.
-"""
-
-
-def cellToWorldCenter(cell: Cell) -> tuple[float, float]:
-    r, c = cell
-    x = ORIGIN_X + c * CELL_SIZE
-    y = ORIGIN_Y - r * CELL_SIZE
-    return x, y
-
-
-"""
 Move MAZE_ROBOT to the centre of the given maze cell.
 
 @param supervisor Webots Supervisor controlling the world.
@@ -306,7 +270,7 @@ def moveRobotToCell(supervisor: Supervisor, cell: Cell) -> None:
         print("[maze_builder] WARNING: robot has no translation field")
         return
 
-    x, y = cellToWorldCenter(cell)
+    x, y = getCellCenterWorld(cell, MAZE_ORIGIN, CELL_SIZE)
     current = txField.getSFVec3f()
     z = current[2] if len(current) >= 3 else 0.0
 
@@ -350,7 +314,7 @@ def placeGoalMarker(supervisor: Supervisor, goalCell: Cell) -> None:
     root = supervisor.getRoot()
     children = root.getField("children")
 
-    x, y = cellToWorldCenter(goalCell)
+    x, y = getCellCenterWorld(goalCell, MAZE_ORIGIN, CELL_SIZE)
 
     node_string = f"""
 Solid {{

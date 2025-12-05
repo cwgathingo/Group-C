@@ -1,5 +1,9 @@
 from enum import Enum, IntEnum, auto
 from typing import Tuple, List, Dict, Optional
+from maze_shared.direction_utils import (
+    getDirectionDelta,
+    rotateDirectionCounterClockwise,
+)
 
 Cell = Tuple[int, int]  # (row, col)
 
@@ -197,14 +201,8 @@ class Maze:
     def getNeighbour(self, cell: Cell, direction: Direction) -> Optional[Cell]:
         (row, col) = cell
 
-        if direction == Direction.NORTH:
-            neighbour = (row - 1, col)
-        elif direction == Direction.EAST:
-            neighbour = (row, col + 1)
-        elif direction == Direction.SOUTH:
-            neighbour = (row + 1, col)
-        else:  # Direction.WEST
-            neighbour = (row, col - 1)
+        dRow, dCol = getDirectionDelta(direction)
+        neighbour = (row + dRow, col + dCol)
 
         if self.inBounds(neighbour):
             return neighbour
@@ -237,7 +235,7 @@ class Maze:
     """
 
     def getOppositeDirection(self, direction: Direction) -> Direction:
-        return Direction((direction + 2) % 4)
+        return rotateDirectionCounterClockwise(direction, 2)
 
     # ---------- Mapping updates (belief updates) ----------
 
