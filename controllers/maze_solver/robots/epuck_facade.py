@@ -16,7 +16,7 @@ from .robot_interface import (
 from maze.maze import (
     Cell,
     Direction,
-)  # if Pylance complains, you can switch to relative later
+)  # switch to relative imports later if desired
 from maze_shared.maze_geometry import getCellCenterWorld
 from maze_shared.direction_utils import (
     getDirectionDelta,
@@ -107,7 +107,7 @@ class EPuckFacade(RobotFacade):
         basicStepMs = int(self._robot.getBasicTimeStep())
         self._timeStepSeconds = (basicStepMs if basicStepMs > 0 else 32) / 1000.0
 
-        # Devices (to be initialised by you)
+        # Devices (to be initialised downstream)
         self._leftMotor = robot.getDevice("left wheel motor")
         self._rightMotor = robot.getDevice("right wheel motor")
 
@@ -212,7 +212,7 @@ class EPuckFacade(RobotFacade):
     """
     Get the robot's current heading as a unit vector in world coordinates.
 
-    For now you can return a dummy value until compass is wired.
+    For now a fallback is returned until the compass is fully wired.
 
     @return Heading unit vector (hx, hy).
     """
@@ -227,8 +227,8 @@ class EPuckFacade(RobotFacade):
     """
     Get the robot's current heading snapped to the nearest cardinal direction.
 
-    Initially you can just return self._currentDirection; later you can
-    derive it from the heading vector with a tolerance.
+    Initially this returns self._currentDirection; later it can be derived
+    from the heading vector with a tolerance.
 
     @return Maze heading as Direction.
     """
@@ -258,7 +258,7 @@ class EPuckFacade(RobotFacade):
 
     def requestMoveForwardOneCell(self) -> None:
         if self._state == RobotState.EXECUTING_ACTION:
-            # For now, ignore if already busy. Later you could raise or log.
+            # For now, ignore if already busy. A future version could raise or log.
             return
 
         self._state = RobotState.EXECUTING_ACTION
@@ -458,7 +458,7 @@ class EPuckFacade(RobotFacade):
         self._leftMotor.setVelocity(left)
         self._rightMotor.setVelocity(right)
 
-        # 3. Check if we've gone (almost) one cell
+        # 3. Check if the robot has travelled almost one cell
         if dist < (self._cellSize - POSITION_TOLERANCE):
             return
 
@@ -523,8 +523,8 @@ class EPuckFacade(RobotFacade):
         # Debug
         # print(f"[EPuckFacade] turn action={self._currentAction.name} dtheta={dtheta:.3f} rad")
 
-        # If we are still outside the [target ± ANGLE_TOLERANCE] band,
-        # we have not completed the 90-degree turn yet, so continue turning.
+        # If still outside the [target ± ANGLE_TOLERANCE] band,
+        # the 90-degree turn is not complete yet, so continue turning.
         if abs(turned - target) > ANGLE_TOLERANCE:
             return
 
@@ -651,8 +651,8 @@ class EPuckFacade(RobotFacade):
     Optionally return the robot's precise world pose.
 
     For EPuckFacade this reflects the internal (x, y, theta) belief derived
-    from the known start cell and subsequent motion. If you later decide not
-    to maintain a continuous pose, you may return None instead.
+    from the known start cell and subsequent motion. If the implementation
+    stops maintaining a continuous pose, this may return None instead.
 
     @return Tuple (x, y, theta) or None.
     """

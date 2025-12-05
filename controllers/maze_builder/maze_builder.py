@@ -72,7 +72,7 @@ def generatePerfectMaze(
 
 """
 Position of a vertical wall segment between (r, c) and (r, c+1).
-For borders we allow c = -1 (left of col 0) and c = COLS-1 (right of last).
+For borders c = -1 (left of col 0) and c = COLS-1 (right of last) are permitted.
 
 @param r Row index.
 @param c Column index.
@@ -88,7 +88,7 @@ def verticalWallPos(r: int, c: int) -> Tuple[float, float]:
 
 """
 Position of a horizontal wall segment between (r, c) and (r+1, c).
-For borders we allow r = -1 (above row 0) and r = ROWS-1 (below last).
+For borders r = -1 (above row 0) and r = ROWS-1 (below last) are permitted.
 
 @param r Row index.
 @param c Column index.
@@ -107,7 +107,7 @@ Remove all existing Wall nodes and create a rectangular frame of
 Wall segments around the 4x4 cell grid.
 
 This step ignores the maze connectivity; it's just to verify that
-our coordinates and sizes are correct.
+the coordinates and sizes are correct.
 
 @param supervisor Webots Supervisor controlling the world.
 @return None

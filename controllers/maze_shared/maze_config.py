@@ -40,6 +40,6 @@ def computeMazeOrigin() -> Tuple[float, float]:
 MAZE_ORIGIN: Tuple[float, float] = computeMazeOrigin()
 
 # Default start/goal cells in maze coordinates (row, col)
-# These are just defaults; we can override them later via the supervisor.
+# These are defaults; they can be overridden later via the supervisor.
 DEFAULT_START: Tuple[int, int] = (ROWS - 1, COLS - 1)  # bottom-right
 DEFAULT_GOAL: Tuple[int, int] = (ROWS - 1, 0)  # bottom-left

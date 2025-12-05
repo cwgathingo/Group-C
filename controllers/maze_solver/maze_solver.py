@@ -1,7 +1,7 @@
 import os
 import sys
 
-# Add the parent 'controllers' directory to sys.path so we can import maze_shared
+# Add the parent 'controllers' directory to sys.path so maze_shared can be imported
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from collections import deque
@@ -95,7 +95,7 @@ class MazeController:
         # Robot motion facade (e-puck implementation)
         self._robotFacade: Optional[RobotFacade] = None
 
-        # Track the high-level action we asked the robot to execute.
+        # Track the high-level action requested for execution.
         # None = no pending action (idle from planning perspective).
         self._pendingAction: Optional[MotionAction] = None
 
@@ -113,7 +113,7 @@ class MazeController:
 
     Movement actions may take multiple Webots timesteps to complete,
     so the controller only performs sensing and planning when no action
-    is currently in progress.
+    is currently in progress, depending on how movement is implemented.
 
     @return None
     """
@@ -134,7 +134,7 @@ class MazeController:
             if self._robotFacade.isBusy():
                 continue
 
-            # If we had asked for an action previously and the robot is now idle,
+            # If an action was requested previously and the robot is now idle,
             # handle the completion here.
             if self._pendingAction is not None:
                 self._handleCompletedAction()
@@ -413,7 +413,7 @@ class MazeController:
                 (nr, nc) = neighbourCell
                 nextDist = currentDistVal + 1
 
-                # Only update if we found a strictly shorter path
+                # Only update if a strictly shorter path is found
                 if nextDist < wfMatrix[nr][nc]:
                     wfMatrix[nr][nc] = nextDist
                     frontier.append(neighbourCell)
@@ -534,7 +534,7 @@ class MazeController:
     This method is responsible for:
     - Sending motor commands to perform the action (in Webots world).
     - Waiting for the movement to complete (possibly over multiple
-      timesteps, depending on how you implement movement).
+      timesteps, depending on how movement is implemented).
     - Updating _currentCell and/or _currentDirection in the belief.
 
     @param action The action to execute (as chosen by _decideNextAction).
@@ -601,7 +601,7 @@ class MazeController:
             print("Action failed:", self._pendingAction, "result:", result)
             self._stopMotors()
             # For now, exit the controller on any failure.
-            # (You can add smarter recovery later.)
+            # (Smarter recovery can be added later.)
             self._pendingAction = None
             # Force termination by exiting run() main loop:
             # simplest is to raise SystemExit.
@@ -689,7 +689,7 @@ Creates a MazeController instance with a chosen maze size, start and
 goal cells, and starts the main control loop.
 
 Adjust the rows, cols, startCell, and goalCell values to match the
-Webots world you construct.
+constructed Webots world.
 
 @return None
 """
