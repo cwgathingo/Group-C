@@ -2,7 +2,7 @@
 
 from typing import Tuple
 
-SEED = 1005
+SEED = 2002
 
 # Maze dimensions (in cells)
 ROWS: int = 6
@@ -11,24 +11,26 @@ COLS: int = 6
 # Cell size in meters
 CELL_SIZE: float = 0.14
 
+"""
+Return the world (x, y) coordinates of the centre of cell (0, 0),
+assuming the world origin (0, 0) is at the centre of the maze.
+
+Convention:
+  - Columns increase to the right (+x).
+  - Rows increase downward (-y).
+  - Cell (0, 0) is the top-left cell in maze coordinates.
+
+For a COLS x ROWS grid, the x,y of cell (0,0) centre are:
+
+    origin_x = -((COLS - 1) * CELL_SIZE) / 2
+    origin_y = +((ROWS - 1) * CELL_SIZE) / 2
+
+@return Tuple (origin_x, origin_y) of cell (0, 0) centre.
+"""
+
 
 def computeMazeOrigin() -> Tuple[float, float]:
-    """
-    Return the world (x, y) coordinates of the centre of cell (0, 0),
-    assuming the world origin (0, 0) is at the centre of the maze.
 
-    Convention:
-      - Columns increase to the right (+x).
-      - Rows increase downward (-y).
-      - Cell (0, 0) is the top-left cell in maze coordinates.
-
-    For a COLS x ROWS grid, the x,y of cell (0,0) centre are:
-
-        origin_x = -((COLS - 1) * CELL_SIZE) / 2
-        origin_y = +((ROWS - 1) * CELL_SIZE) / 2
-
-    @return Tuple (origin_x, origin_y) of cell (0, 0) centre.
-    """
     origin_x = -((COLS - 1) * CELL_SIZE) / 2.0
     origin_y = +((ROWS - 1) * CELL_SIZE) / 2.0
     return origin_x, origin_y
