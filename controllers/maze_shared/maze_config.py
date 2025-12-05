@@ -1,6 +1,7 @@
 # controllers/maze_config.py
 
 from typing import Tuple
+from enum import Enum
 
 SEED = 2004
 
@@ -43,3 +44,14 @@ MAZE_ORIGIN: Tuple[float, float] = computeMazeOrigin()
 # These are defaults; they can be overridden later via the supervisor.
 DEFAULT_START: Tuple[int, int] = (ROWS - 1, COLS - 1)  # bottom-right
 DEFAULT_GOAL: Tuple[int, int] = (ROWS - 1, 0)  # bottom-left
+
+
+class LogLevel(Enum):
+    DEBUG = 10
+    INFO = 20
+    WARN = 30
+    ERROR = 40
+
+
+# Default log verbosity
+LOG_LEVEL: LogLevel = LogLevel.INFO

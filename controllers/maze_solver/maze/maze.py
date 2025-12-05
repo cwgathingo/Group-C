@@ -4,6 +4,7 @@ from maze_shared.direction_utils import (
     getDirectionDelta,
     rotateDirectionCounterClockwise,
 )
+from maze_shared.logger import logWarn
 
 Cell = Tuple[int, int]  # (row, col)
 
@@ -260,12 +261,8 @@ class Maze:
 
         # Neighbour is outside the maze bounds
         if nCell is None:
-            print(
-                "Warning: ignoring markPassageState for out-of-bounds passage "
-                "from cell",
-                cell,
-                "direction",
-                direction,
+            logWarn(
+                f"[maze] ignoring markPassageState for out-of-bounds passage from cell {cell} direction {direction}"
             )
             return
 
@@ -273,19 +270,12 @@ class Maze:
         (nRow, nCol) = nCell
         currentState = self._passages[row][col][direction]
 
-        # Do not overwrite an already-known passage
+        # If already known, ignore same-state updates; warn on conflicts and keep the existing value.
         if currentState != PassageState.UNKNOWN:
-            print(
-                "Warning: ignoring markPassageState; passage already known.",
-                "cell",
-                cell,
-                "direction",
-                direction,
-                "current state",
-                currentState,
-                "requested state",
-                passageState,
-            )
+            if currentState != passageState:
+                logWarn(
+                    f"[maze] conflicting passage update ignored. cell {cell} direction {direction} current state {currentState} requested state {passageState}"
+                )
             return
 
         # Update this passage

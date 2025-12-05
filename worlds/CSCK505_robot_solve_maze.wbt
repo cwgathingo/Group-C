@@ -23,6 +23,11 @@ Robot {
         width 300
         height 60
       }
+      Receiver {
+        name "status_receiver"
+        channel 1
+        baudRate 115200
+      }
     ]
 }
 DEF MAZE_ROBOT E-puck {
@@ -36,6 +41,11 @@ DEF MAZE_ROBOT E-puck {
     Compass {
     }
     GPS {
+    }
+    Emitter {
+      name "status_emitter"
+      channel 1
+      baudRate 115200
     }
   ]
 }

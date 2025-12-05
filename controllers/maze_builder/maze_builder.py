@@ -8,6 +8,7 @@ import random
 from typing import Tuple, List, Set
 from maze_shared.maze_config import ROWS, COLS, CELL_SIZE, MAZE_ORIGIN, SEED
 from maze_shared.maze_geometry import getCellCenterWorld
+from maze_shared.logger import logDebug, logInfo, logWarn
 
 Cell = Tuple[int, int]
 
@@ -127,7 +128,7 @@ def buildBorderWalls(supervisor: Supervisor) -> None:
             children.removeMF(i)
             removed += 1
         i -= 1
-    print(f"[maze_builder] removed {removed} existing Wall nodes")
+    logDebug(f"[maze_builder] removed {removed} existing Wall nodes")
 
     # 2) Add top and bottom border (horizontal walls)
     for c in range(COLS):
@@ -161,7 +162,7 @@ def buildBorderWalls(supervisor: Supervisor) -> None:
             f"Wall {{ translation {x} {y} 0 size 0.01 {CELL_SIZE} 0.05 }}",
         )
 
-    print("[maze_builder] border walls created")
+    logDebug("[maze_builder] border walls created")
 
 
 """
@@ -210,7 +211,7 @@ def buildInternalWalls(
                     f"Wall {{ translation {x} {y} 0 size {CELL_SIZE} 0.01 0.05 }}",
                 )
 
-    print("[maze_builder] internal walls created")
+    logDebug("[maze_builder] internal walls created")
 
 
 """
@@ -234,7 +235,7 @@ def updateRectangleArena(supervisor: Supervisor) -> None:
             break
 
     if arena_node is None:
-        print(
+        logWarn(
             "[maze_builder] WARNING: no RectangleArena node found; skipping arena update"
         )
         return
@@ -260,7 +261,7 @@ def updateRectangleArena(supervisor: Supervisor) -> None:
     if wallHeightField is not None:
         wallHeightField.setSFFloat(0.001)  # almost flat
 
-    print(
+    logDebug(
         "[maze_builder] RectangleArena updated: "
         f"floorSize=({floorWidth:.3f}, {floorHeight:.3f}), "
         f"floorTileSize=({tileWidth:.3f}, {tileHeight:.3f}), "
@@ -280,12 +281,12 @@ Move MAZE_ROBOT to the centre of the given maze cell.
 def moveRobotToCell(supervisor: Supervisor, cell: Cell) -> None:
     robotNode = supervisor.getFromDef("MAZE_ROBOT")
     if robotNode is None:
-        print("[maze_builder] WARNING: MAZE_ROBOT not found; cannot move robot")
+        logWarn("[maze_builder] WARNING: MAZE_ROBOT not found; cannot move robot")
         return
 
     txField = robotNode.getField("translation")
     if txField is None:
-        print("[maze_builder] WARNING: robot has no translation field")
+        logWarn("[maze_builder] WARNING: robot has no translation field")
         return
 
     x, y = getCellCenterWorld(cell, MAZE_ORIGIN, CELL_SIZE)
@@ -293,7 +294,7 @@ def moveRobotToCell(supervisor: Supervisor, cell: Cell) -> None:
     z = current[2] if len(current) >= 3 else 0.0
 
     txField.setSFVec3f([x, y, z])
-    print(f"[maze_builder] moved robot to cell {cell} at ({x:.3f}, {y:.3f})")
+    logDebug(f"[maze_builder] moved robot to cell {cell} at ({x:.3f}, {y:.3f})")
 
 
 """
@@ -315,7 +316,7 @@ def chooseStartAndGoal(rng: random.Random) -> tuple[Cell, Cell]:
     startCell = (startRow, startCol)
     goalCell = (goalRow, goalCol)
 
-    print(f"[maze_builder] chosen start={startCell}, goal={goalCell}")
+    logDebug(f"[maze_builder] chosen start={startCell}, goal={goalCell}")
     return startCell, goalCell
 
 
@@ -355,7 +356,7 @@ Solid {{
 }}
 """
     children.importMFNodeFromString(-1, node_string)
-    print(f"[maze_builder] placed goal marker at cell {goalCell} at ({x:.3f}, {y:.3f})")
+    logDebug(f"[maze_builder] placed goal marker at cell {goalCell} at ({x:.3f}, {y:.3f})")
 
 
 """
@@ -414,6 +415,33 @@ def updateTimeDisplay(display, sim_time: float) -> None:
 
 
 """
+Process pending status messages; return True if run should stop.
+"""
+
+
+def _pollStatusMessages(statusReceiver) -> bool:
+
+    if statusReceiver is None:
+        return False
+
+    while statusReceiver.getQueueLength() > 0:
+        message = statusReceiver.getString() or ""
+        statusReceiver.nextPacket()
+
+        lowered = message.strip().lower()
+        if lowered == "goal":
+            logInfo("[maze_builder] robot reported goal reached; stopping timer.")
+            return True
+        if lowered == "stuck":
+            logInfo("[maze_builder] robot reported stuck; stopping timer.")
+            return True
+        # Debug: log unexpected messages for troubleshooting
+        if message:
+            logDebug(f"[maze_builder] received status message (ignored): {message}")
+    return False
+
+
+"""
 Entry point for building the maze and signalling readiness.
 
 @return None
@@ -427,6 +455,10 @@ def main():
     timeDisplay = supervisor.getDevice("TIME_DISPLAY")
     timeDisplay.setFont("Arial", 20, True)
 
+    statusReceiver = supervisor.getDevice("status_receiver")
+    if statusReceiver is not None:
+        statusReceiver.enable(timestep)
+
     # Initialise world_ready to 0 for this run
     robotNode = supervisor.getFromDef("MAZE_ROBOT")
     customField = None
@@ -434,11 +466,11 @@ def main():
         customField = robotNode.getField("customData")
         if customField is not None:
             customField.setSFString("world_ready=0")
-            print("[maze_builder] world_ready initialised to 0")
+            logDebug("[maze_builder] world_ready initialised to 0")
 
     rng = random.Random(SEED)
 
-    print(f"[maze_builder] started with seed={SEED}")
+    logDebug(f"[maze_builder] started with seed={SEED}")
 
     # NEW: choose start & goal on opposite borders
     startCell, goalCell = chooseStartAndGoal(rng)
@@ -447,9 +479,10 @@ def main():
     moveRobotToCell(supervisor, startCell)
 
     openEdges = generatePerfectMaze(ROWS, COLS, rng)
-    print("[maze_builder] open passages (edges between cells):")
-    for edge in sorted(openEdges):
-        print("  ", edge)
+    # debug: print generated edges if needed
+    # logDebug("[maze_builder] open passages (edges between cells):")
+    # for edge in sorted(openEdges):
+    #     logDebug(f"  {edge}")
 
     buildBorderWalls(supervisor)
     buildInternalWalls(supervisor, openEdges)
@@ -461,11 +494,12 @@ def main():
     if customField is not None:
         payload = buildCustomDataPayload(startCell, goalCell, SEED)
         customField.setSFString(payload)
-        print(f"[maze_builder] customData set: {payload}")
+        logInfo(f"[maze_builder] ready: {payload}")
 
     while supervisor.step(timestep) != -1:
         updateTimeDisplay(timeDisplay, supervisor.getTime())
-        pass
+        if _pollStatusMessages(statusReceiver):
+            return
 
 
 if __name__ == "__main__":

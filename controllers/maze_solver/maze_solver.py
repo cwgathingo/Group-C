@@ -21,7 +21,12 @@ from maze_shared.maze_config import (
     MAZE_ORIGIN,
     ROWS as DEFAULT_ROWS,
     SEED as DEFAULT_SEED,
+    LOG_LEVEL,
+    LogLevel,
 )
+from maze_shared.logger import logDebug, logInfo, logWarn, logError
+
+IS_DEBUG = LOG_LEVEL == LogLevel.DEBUG
 
 
 """
@@ -73,6 +78,16 @@ class MazeController:
         basicStep = int(self._robot.getBasicTimeStep())
         self._timeStep = basicStep if basicStep > 0 else 32
 
+        # Optional emitter for status signalling back to the supervisor
+        try:
+            self._statusEmitter = self._robot.getDevice("status_emitter")
+        except Exception:
+            self._statusEmitter = None
+        if self._statusEmitter is None:
+            logWarn(
+                "[maze_solver] status_emitter not found; supervisor won't get status pings."
+            )
+
         self._mazeOriginWorld = mazeOriginWorld
         self._startDirection = startDirection
         self._defaultConfig = {
@@ -123,8 +138,13 @@ class MazeController:
         self._initialiseRuntimeState(runtimeConfig)
 
         if self._robotFacade is None or self._maze is None or self._currentCell is None:
-            print("[maze_solver] Runtime configuration failed; stopping controller.")
+            logError("[maze_solver] Runtime configuration failed; stopping controller.")
             return
+
+        # Signal that the solver is running with the applied config (debug only)
+        if IS_DEBUG:
+            self._sendStatus("running")
+        finalStatus: Optional[str] = None
 
         while self._robot.step(self._timeStep) != -1:
 
@@ -141,9 +161,11 @@ class MazeController:
 
             # 1. Check goal condition (only when robot is idle)
             if self._currentCell == self._maze.getGoal():
-                print("\n==============================")
-                print("  GOAL REACHED!  ")
-                print("==============================\n")
+                logInfo("\n==============================")
+                logInfo("  GOAL REACHED!  ")
+                logInfo("==============================\n")
+                self._sendStatus("goal")
+                finalStatus = "goal"
                 # Optional: victory dance / spin / LED flash
                 self._victoryCelebration()
                 # Ensure motors are stopped
@@ -152,23 +174,32 @@ class MazeController:
                 break
             # 2. Sense environment and 3. update maze belief
             self._senseAndUpdateMap()
-            print("Map after sensing: ")
-            self._maze.printAsciiMap()
+            if IS_DEBUG:
+                logDebug("Map after sensing:")
+                self._maze.printAsciiMap()
 
             # 4. Decide next action based on the updated belief
             action = self._decideNextAction()
 
             # Deal with edge cases, for example pathFinder doesn't have a path
             if action is None:
-                print("No action decided; stopping.")
+                logWarn("No action decided; stopping.")
+                self._sendStatus("stuck")
+                finalStatus = "stuck"
                 self._stopMotors()
                 break
 
             # 5. Start executing the chosen action (async movement)
             self._executeAction(action)
 
-        print("Final belief map:")
+        logInfo("Final belief map:")
         self._maze.printAsciiMap()
+
+        # Give the supervisor a chance to receive the final status message
+        if finalStatus is not None and self._statusEmitter is not None:
+            for _ in range(3):
+                if self._robot.step(self._timeStep) == -1:
+                    break
 
     """
     Wait for the supervisor to signal that the world is ready and return the
@@ -181,7 +212,7 @@ class MazeController:
     """
 
     def _waitForRuntimeConfig(self) -> Dict[str, object]:
-        print("[maze_solver] Waiting for world_ready==1 from supervisor...")
+        logDebug("[maze_solver] Waiting for world_ready==1 from supervisor...")
 
         parsed: Dict[str, object] = {}
 
@@ -190,19 +221,24 @@ class MazeController:
                 rawData = self._robot.getCustomData() or ""
                 parsed = self._parseCustomData(rawData)
                 if parsed.get("world_ready") == 1:
-                    print("[maze_solver] world_ready==1, starting control loop.")
+                    logDebug("[maze_solver] world_ready==1, starting control loop.")
                     break
                 if self._robot.step(self._timeStep) == -1:
                     return self._mergeWithDefaults(parsed)
         else:
-            print(
+            logWarn(
                 "[maze_solver] WARNING: Robot API missing getCustomData; "
                 "using default configuration."
             )
 
         merged = self._mergeWithDefaults(parsed)
-        print(f"[maze_solver] parsed customData: {parsed}")
-        print(f"[maze_solver] runtime config: {merged}")
+        logDebug(
+            "[maze_solver] runtime config: "
+            f"rows={merged.get('rows')} cols={merged.get('cols')} "
+            f"start={merged.get('start')} goal={merged.get('goal')} "
+            f"cell_size={merged.get('cell_size')} seed={merged.get('seed')} "
+            f"startDir={merged.get('startDir')}"
+        )
         return merged
 
     """
@@ -265,6 +301,19 @@ class MazeController:
         return config
 
     """
+    Send a status update back to the supervisor via emitter, if available.
+    """
+
+    def _sendStatus(self, status: str) -> None:
+        if self._statusEmitter is None:
+            return
+        try:
+            self._statusEmitter.send(status.encode("utf-8"))
+            logDebug(f"[maze_solver] sent status: {status}")
+        except Exception as exc:
+            logWarn(f"[maze_solver] Warning: failed to send status '{status}': {exc}")
+
+    """
     Convert a string into a Direction enum, defaulting to current start
     direction if the string is not recognised. Accepts north/east/south/west.
     """
@@ -322,7 +371,7 @@ class MazeController:
         print(
             "[maze_solver] runtime config applied: "
             f"rows={rows}, cols={cols}, start={startCell}, goal={goalCell}, "
-            f"cell_size={cellSizeMeters}, seed={seed}, startDir={self._currentDirection}"
+            f"cell_size={cellSizeMeters}, seed={seed}, startDir={self._currentDirection.name.lower()}"
         )
 
     """
@@ -353,6 +402,12 @@ class MazeController:
         for direction in Direction:
             blocked = localPassages.get(direction)
             if blocked:
+                neighbour = self._maze.getNeighbour(self._currentCell, direction)
+                if neighbour is None:
+                    logDebug(
+                        f"[maze_solver] skipping boundary passage update cell={self._currentCell} dir={direction}"
+                    )
+                    continue
                 self._maze.markPassageState(
                     self._currentCell,
                     direction,
@@ -430,6 +485,8 @@ class MazeController:
     """
 
     def _printWavefront(self, wfMatrix: List[List[int]]):
+        if not IS_DEBUG:
+            return
 
         rows = len(wfMatrix)
         cols = len(wfMatrix[0])
@@ -544,16 +601,16 @@ class MazeController:
     def _executeAction(self, action) -> None:
         self._pendingAction = action
         if action == MotionAction.MOVE_FORWARD_ONE_CELL:
-            print("Executing Action: MOVE_FORWARD_ONE_CELL")
+            logInfo("Executing Action: MOVE_FORWARD_ONE_CELL")
             self._robotFacade.requestMoveForwardOneCell()
         elif action == MotionAction.TURN_LEFT_90:
-            print("Executing Action: TURN_LEFT_90")
+            logInfo("Executing Action: TURN_LEFT_90")
             self._robotFacade.requestTurnLeft90()
         elif action == MotionAction.TURN_RIGHT_90:
-            print("Executing Action: TURN_RIGHT_90")
+            logInfo("Executing Action: TURN_RIGHT_90")
             self._robotFacade.requestTurnRight90()
         else:
-            print("Warning: trying to execute unrecognized action: ", action)
+            logWarn(f"Warning: trying to execute unrecognized action: {action}")
 
     """
     Stop all wheel motors.
@@ -616,7 +673,15 @@ class MazeController:
 
             heading = self._robotFacade.getHeadingDirection()
             opposite = self._maze.getOppositeDirection(heading)
-            self._maze.markPassageState(self._currentCell, opposite, PassageState.OPEN)
+            neighbour = self._maze.getNeighbour(self._currentCell, opposite)
+            if neighbour is not None:
+                self._maze.markPassageState(
+                    self._currentCell, opposite, PassageState.OPEN
+                )
+            else:
+                logDebug(
+                    f"[maze_solver] skipped marking passage (boundary) cell={self._currentCell} dir={opposite}"
+                )
 
         elif self._pendingAction in (
             MotionAction.TURN_LEFT_90,
@@ -626,8 +691,9 @@ class MazeController:
             # print(f"Heading after turn: {self._currentDirection}")
             pass
 
-        print(f"Map after action: {self._pendingAction}: ")
-        self._maze.printAsciiMap()
+        if IS_DEBUG:
+            logDebug(f"Map after action: {self._pendingAction}: ")
+            self._maze.printAsciiMap()
         self._pendingAction = None
 
     """
