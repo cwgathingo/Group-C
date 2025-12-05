@@ -376,39 +376,32 @@ Solid {{
     print(f"[maze_builder] placed goal marker at cell {goalCell} at ({x:.3f}, {y:.3f})")
 
 
-DYNAMIC_CONFIG_PATH = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "maze_shared",
-    "dynamic_config.py",
-)
-
-
 """
-Write the runtime-generated config values for the maze controller.
+Build the customData payload that will be written to MAZE_ROBOT.
+
+Keys are separated by ';' and coordinates use 'row,col'.
+Includes startDir to keep heading aligned with placement.
 
 @param startCell Selected start cell.
 @param goalCell Selected goal cell.
 @param seed      Random seed used.
-@return None
+@return String payload for customData.
 """
 
 
-def writeDynamicConfig(startCell: Cell, goalCell: Cell, seed: int) -> None:
-    content = f"""# AUTO-GENERATED AT RUNTIME - DO NOT EDIT
-START = ({startCell[0]}, {startCell[1]})
-GOAL = ({goalCell[0]}, {goalCell[1]})
-SEED = {seed}
-ROWS = {ROWS}
-COLS = {COLS}
-CELL_SIZE = {CELL_SIZE}
-"""
-    try:
-        with open(DYNAMIC_CONFIG_PATH, "w", encoding="utf-8") as f:
-            f.write(content)
-        print(f"[maze_builder] wrote config to {DYNAMIC_CONFIG_PATH}")
-    except OSError as e:
-        print(f"[maze_builder] ERROR writing dynamic_config.py: {e}")
+def buildCustomDataPayload(startCell: Cell, goalCell: Cell, seed: int) -> str:
+    startDir = "north"
+    fields = [
+        ("world_ready", "1"),
+        ("start", f"{startCell[0]},{startCell[1]}"),
+        ("goal", f"{goalCell[0]},{goalCell[1]}"),
+        ("startDir", startDir),
+        ("rows", str(ROWS)),
+        ("cols", str(COLS)),
+        ("cell_size", f"{CELL_SIZE}"),
+        ("seed", str(seed)),
+    ]
+    return ";".join(f"{k}={v}" for k, v in fields) + ";"
 
 
 """
@@ -467,7 +460,6 @@ def main():
 
     # NEW: choose start & goal on opposite borders
     startCell, goalCell = chooseStartAndGoal(rng)
-    writeDynamicConfig(startCell, goalCell, SEED)
 
     updateRectangleArena(supervisor)
     moveRobotToCell(supervisor, startCell)
@@ -485,8 +477,9 @@ def main():
 
     # Mark world as ready *after* maze + robot placement + marker
     if customField is not None:
-        customField.setSFString("world_ready=1")
-        print("[maze_builder] world_ready set to 1")
+        payload = buildCustomDataPayload(startCell, goalCell, SEED)
+        customField.setSFString(payload)
+        print(f"[maze_builder] customData set: {payload}")
 
     while supervisor.step(timestep) != -1:
         updateTimeDisplay(timeDisplay, supervisor.getTime())

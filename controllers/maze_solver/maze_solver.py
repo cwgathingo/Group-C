@@ -6,42 +6,23 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from collections import deque
 from math import inf
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from controller import Robot
 
 from maze.maze import Maze, Direction, PassageState, Cell
 from robots.robot_interface import RobotFacade, MotionAction, ActionResult
 from robots.epuck_facade import EPuckFacade
 
-from maze_shared.dynamic_config import (
-    ROWS,
-    COLS,
-    CELL_SIZE,
-    START as RUNTIME_START,
-    GOAL as RUNTIME_GOAL,
+from maze_shared.maze_config import (
+    CELL_SIZE as DEFAULT_CELL_SIZE,
+    COLS as DEFAULT_COLS,
+    DEFAULT_GOAL,
+    DEFAULT_START,
+    MAZE_ORIGIN,
+    ROWS as DEFAULT_ROWS,
+    SEED as DEFAULT_SEED,
 )
-from maze_shared.maze_config import MAZE_ORIGIN
 
-# Temporary hard-coded path for motion debugging.
-# Will be replaced by planner output later.
-# pathIndex = 0
-# pathList = [
-#     MotionAction.MOVE_FORWARD_ONE_CELL,
-#     MotionAction.TURN_LEFT_90,
-#     MotionAction.MOVE_FORWARD_ONE_CELL,
-#     MotionAction.TURN_RIGHT_90,
-#     MotionAction.MOVE_FORWARD_ONE_CELL,
-#     MotionAction.TURN_LEFT_90,
-#     MotionAction.MOVE_FORWARD_ONE_CELL,
-#     MotionAction.TURN_RIGHT_90,
-#     MotionAction.MOVE_FORWARD_ONE_CELL,
-#     MotionAction.TURN_LEFT_90,
-#     MotionAction.MOVE_FORWARD_ONE_CELL,
-#     MotionAction.TURN_LEFT_90,
-#     MotionAction.MOVE_FORWARD_ONE_CELL,
-#     MotionAction.MOVE_FORWARD_ONE_CELL,
-#     MotionAction.MOVE_FORWARD_ONE_CELL,
-# ]
 
 """
 High-level controller for the maze-solving robot.
@@ -92,21 +73,27 @@ class MazeController:
         basicStep = int(self._robot.getBasicTimeStep())
         self._timeStep = basicStep if basicStep > 0 else 32
 
-        # Maze belief
-        self._maze = Maze(rows, cols, startCell, goalCell)
+        self._mazeOriginWorld = mazeOriginWorld
+        self._startDirection = startDirection
+        self._defaultConfig = {
+            "rows": rows,
+            "cols": cols,
+            "start": startCell,
+            "goal": goalCell,
+            "cell_size": cellSizeMeters,
+            "seed": DEFAULT_SEED,
+            "startDir": startDirection,
+        }
+
+        # Maze belief (populated after runtime config arrives)
+        self._maze: Optional[Maze] = None
 
         # Robot belief about its pose in maze coordinates
-        self._currentCell: Cell = startCell
+        self._currentCell: Optional[Cell] = None
         self._currentDirection: Direction = startDirection
 
         # Robot motion facade (e-puck implementation)
-        self._robotFacade: RobotFacade = EPuckFacade(
-            robot=self._robot,
-            cellSizeMeters=cellSizeMeters,
-            mazeOriginWorld=mazeOriginWorld,
-            startCell=startCell,
-            startDirection=self._currentDirection,
-        )
+        self._robotFacade: Optional[RobotFacade] = None
 
         # Track the high-level action we asked the robot to execute.
         # None = no pending action (idle from planning perspective).
@@ -132,19 +119,12 @@ class MazeController:
     """
 
     def run(self) -> None:
-        # --- Wait for world_ready from the supervisor ---
-        print("[maze_solver] Waiting for world_ready==1 from supervisor...")
+        runtimeConfig = self._waitForRuntimeConfig()
+        self._initialiseRuntimeState(runtimeConfig)
 
-        # If the API is available (it is on Webots Robot), poll customData
-        if hasattr(self._robot, "getCustomData"):
-            while True:
-                value = self._robot.getCustomData() or ""
-                if "world_ready=1" in value:
-                    print("[maze_solver] world_ready==1, starting control loop.")
-                    break
-                # advance simulation until supervisor flips the flag
-                if self._robot.step(self._timeStep) == -1:
-                    return
+        if self._robotFacade is None or self._maze is None or self._currentCell is None:
+            print("[maze_solver] Runtime configuration failed; stopping controller.")
+            return
 
         while self._robot.step(self._timeStep) != -1:
 
@@ -191,6 +171,161 @@ class MazeController:
         self._maze.printAsciiMap()
 
     """
+    Wait for the supervisor to signal that the world is ready and return the
+    merged runtime configuration.
+
+    This polls customData, stepping the simulation until a payload with
+    world_ready=1 is received. Uses startDir when provided.
+
+    @return Dictionary of runtime config values merged with defaults.
+    """
+
+    def _waitForRuntimeConfig(self) -> Dict[str, object]:
+        print("[maze_solver] Waiting for world_ready==1 from supervisor...")
+
+        parsed: Dict[str, object] = {}
+
+        if hasattr(self._robot, "getCustomData"):
+            while True:
+                rawData = self._robot.getCustomData() or ""
+                parsed = self._parseCustomData(rawData)
+                if parsed.get("world_ready") == 1:
+                    print("[maze_solver] world_ready==1, starting control loop.")
+                    break
+                if self._robot.step(self._timeStep) == -1:
+                    return self._mergeWithDefaults(parsed)
+        else:
+            print(
+                "[maze_solver] WARNING: Robot API missing getCustomData; "
+                "using default configuration."
+            )
+
+        merged = self._mergeWithDefaults(parsed)
+        print(f"[maze_solver] parsed customData: {parsed}")
+        print(f"[maze_solver] runtime config: {merged}")
+        return merged
+
+    """
+    Parse the supervisor-provided customData string into structured values.
+
+    The expected format is key=value pairs separated by ';' with start/goal
+    cells encoded as 'row,col'. Supports startDir for initial heading.
+    """
+
+    def _parseCustomData(self, customData: str) -> Dict[str, object]:
+        parsed: Dict[str, object] = {}
+        entries = [entry.strip() for entry in customData.split(";") if entry.strip()]
+
+        for entry in entries:
+            if "=" not in entry:
+                continue
+            key, rawValue = entry.split("=", 1)
+            key = key.strip().lower()
+            rawValue = rawValue.strip()
+
+            if key in ("rows", "cols", "seed", "world_ready"):
+                try:
+                    parsed[key] = int(rawValue)
+                except ValueError:
+                    continue
+            elif key == "startdir":
+                parsed["startDir"] = rawValue.lower()
+            elif key == "cell_size":
+                try:
+                    parsed[key] = float(rawValue)
+                except ValueError:
+                    continue
+            elif key in ("start", "goal"):
+                parts = [p.strip() for p in rawValue.split(",")]
+                if len(parts) != 2:
+                    continue
+                try:
+                    parsed[key] = (int(parts[0]), int(parts[1]))
+                except ValueError:
+                    continue
+
+        return parsed
+
+    """
+    Combine parsed customData with design-time defaults to ensure all keys
+    needed by the controller are present.
+    """
+
+    def _mergeWithDefaults(self, parsed: Dict[str, object]) -> Dict[str, object]:
+        config = {
+            "rows": parsed.get("rows", self._defaultConfig["rows"]),
+            "cols": parsed.get("cols", self._defaultConfig["cols"]),
+            "start": parsed.get("start", self._defaultConfig["start"]),
+            "goal": parsed.get("goal", self._defaultConfig["goal"]),
+            "cell_size": parsed.get("cell_size", self._defaultConfig["cell_size"]),
+            "seed": parsed.get("seed", self._defaultConfig["seed"]),
+            "world_ready": parsed.get("world_ready", 0),
+            "startDir": parsed.get("startDir", self._defaultConfig["startDir"]),
+        }
+        return config
+
+    """
+    Convert a string into a Direction enum, defaulting to current start
+    direction if the string is not recognised. Accepts north/east/south/west.
+    """
+
+    def _directionFromString(self, value: object) -> Direction:
+        if isinstance(value, Direction):
+            return value
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered == "north":
+                return Direction.NORTH
+            if lowered == "east":
+                return Direction.EAST
+            if lowered == "south":
+                return Direction.SOUTH
+            if lowered == "west":
+                return Direction.WEST
+        return self._startDirection
+
+    """
+    Initialise maze belief and robot facade after receiving runtime config.
+    Applies startDir so the internal heading matches supervisor placement.
+    """
+
+    def _initialiseRuntimeState(self, config: Dict[str, object]) -> None:
+        rows = int(config["rows"])
+        cols = int(config["cols"])
+        startValue = config.get("start", self._defaultConfig["start"])
+        goalValue = config.get("goal", self._defaultConfig["goal"])
+        startCell = (
+            startValue
+            if isinstance(startValue, tuple)
+            else self._defaultConfig["start"]
+        )
+        goalCell = (
+            goalValue if isinstance(goalValue, tuple) else self._defaultConfig["goal"]
+        )
+        cellSizeMeters = float(config["cell_size"])
+        seed = config.get("seed", None)
+        startDirValue = config.get("startDir", self._startDirection)
+        startDirection = self._directionFromString(startDirValue)
+
+        self._maze = Maze(rows, cols, startCell, goalCell)
+        self._currentCell = startCell
+        self._currentDirection = startDirection
+
+        self._robotFacade = EPuckFacade(
+            robot=self._robot,
+            cellSizeMeters=cellSizeMeters,
+            mazeOriginWorld=self._mazeOriginWorld,
+            startCell=startCell,
+            startDirection=self._currentDirection,
+        )
+
+        print(
+            "[maze_solver] runtime config applied: "
+            f"rows={rows}, cols={cols}, start={startCell}, goal={goalCell}, "
+            f"cell_size={cellSizeMeters}, seed={seed}, startDir={self._currentDirection}"
+        )
+
+    """
     Read sensors and update the maze belief.
 
     This method is responsible for:
@@ -224,12 +359,13 @@ class MazeController:
                     PassageState.BLOCKED,
                 )
 
-    def _computeWavefront(self) -> List[List[int]]:
-        """
-        Compute a wavefront distance matrix from the goal to every cell.
+    """
+    Compute a wavefront distance matrix from the goal to every cell.
 
-        @return Matrix of shortest path estimates (inf for unreachable).
-        """
+    @return Matrix of shortest path estimates (inf for unreachable).
+    """
+
+    def _computeWavefront(self) -> List[List[int]]:
         maze = self._maze
         (rows, cols) = maze.getShape()
 
@@ -547,13 +683,13 @@ Webots world you construct.
 
 
 def main() -> None:
-    rows = ROWS
-    cols = COLS
-    startCell: Cell = RUNTIME_START
+    rows = DEFAULT_ROWS
+    cols = DEFAULT_COLS
+    startCell: Cell = DEFAULT_START
     startDirection = Direction.NORTH
-    goalCell: Cell = RUNTIME_GOAL
+    goalCell: Cell = DEFAULT_GOAL
 
-    cellSizeMeters = CELL_SIZE
+    cellSizeMeters = DEFAULT_CELL_SIZE
     mazeOriginWorld = MAZE_ORIGIN  # (x, y) of cell (0, 0) centre
 
     controller = MazeController(
