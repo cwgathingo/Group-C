@@ -7,11 +7,7 @@ from controller import Supervisor
 import random
 from typing import Tuple, List, Set
 from maze_shared.maze_config import ROWS, COLS, CELL_SIZE, MAZE_ORIGIN, SEED
-from maze_shared.maze_geometry import (
-    getCellCenterWorld,
-    getHorizontalWallPosition,
-    getVerticalWallPosition,
-)
+from maze_shared.maze_geometry import getCellCenterWorld
 
 Cell = Tuple[int, int]
 
@@ -85,6 +81,38 @@ def generatePerfectMaze(
 
 
 """
+Position of a vertical wall segment between (r, c) and (r, c+1).
+For borders we allow c = -1 (left of col 0) and c = COLS-1 (right of last).
+
+@param r Row index.
+@param c Column index.
+@return (x, y) translation for the wall.
+"""
+
+
+def verticalWallPos(r: int, c: int) -> Tuple[float, float]:
+    x = ORIGIN_X + (c + 0.5) * CELL_SIZE
+    y = ORIGIN_Y - r * CELL_SIZE
+    return x, y
+
+
+"""
+Position of a horizontal wall segment between (r, c) and (r+1, c).
+For borders we allow r = -1 (above row 0) and r = ROWS-1 (below last).
+
+@param r Row index.
+@param c Column index.
+@return (x, y) translation for the wall.
+"""
+
+
+def horizontalWallPos(r: int, c: int) -> Tuple[float, float]:
+    x = ORIGIN_X + c * CELL_SIZE
+    y = ORIGIN_Y - (r + 0.5) * CELL_SIZE
+    return x, y
+
+
+"""
 Remove all existing Wall nodes and create a rectangular frame of
 Wall segments around the 4x4 cell grid.
 
@@ -114,14 +142,14 @@ def buildBorderWalls(supervisor: Supervisor) -> None:
     # 2) Add top and bottom border (horizontal walls)
     for c in range(COLS):
         # Top border: between "virtual row -1" and row 0
-        x, y = getHorizontalWallPosition(-1, c, MAZE_ORIGIN, CELL_SIZE)
+        x, y = horizontalWallPos(-1, c)
         children.importMFNodeFromString(
             -1,
             f"Wall {{ translation {x} {y} 0 size {CELL_SIZE} 0.01 0.05 }}",
         )
 
         # Bottom border: between row ROWS-1 and "virtual row ROWS"
-        x, y = getHorizontalWallPosition(ROWS - 1, c, MAZE_ORIGIN, CELL_SIZE)
+        x, y = horizontalWallPos(ROWS - 1, c)
         children.importMFNodeFromString(
             -1,
             f"Wall {{ translation {x} {y} 0 size {CELL_SIZE} 0.01 0.05 }}",
@@ -130,14 +158,14 @@ def buildBorderWalls(supervisor: Supervisor) -> None:
     # 3) Add left and right border (vertical walls)
     for r in range(ROWS):
         # Left border: between "virtual col -1" and col 0
-        x, y = getVerticalWallPosition(r, -1, MAZE_ORIGIN, CELL_SIZE)
+        x, y = verticalWallPos(r, -1)
         children.importMFNodeFromString(
             -1,
             f"Wall {{ translation {x} {y} 0 size 0.01 {CELL_SIZE} 0.05 }}",
         )
 
         # Right border: between col COLS-1 and "virtual col COLS"
-        x, y = getVerticalWallPosition(r, COLS - 1, MAZE_ORIGIN, CELL_SIZE)
+        x, y = verticalWallPos(r, COLS - 1)
         children.importMFNodeFromString(
             -1,
             f"Wall {{ translation {x} {y} 0 size 0.01 {CELL_SIZE} 0.05 }}",
@@ -174,7 +202,7 @@ def buildInternalWalls(
             a = (r, c)
             b = (r, c + 1)
             if not isOpen(a, b):
-                x, y = getVerticalWallPosition(r, c, MAZE_ORIGIN, CELL_SIZE)
+                x, y = verticalWallPos(r, c)
                 children.importMFNodeFromString(
                     -1,
                     f"Wall {{ translation {x} {y} 0 size 0.01 {CELL_SIZE} 0.05 }}",
@@ -186,7 +214,7 @@ def buildInternalWalls(
             a = (r, c)
             b = (r + 1, c)
             if not isOpen(a, b):
-                x, y = getHorizontalWallPosition(r, c, MAZE_ORIGIN, CELL_SIZE)
+                x, y = horizontalWallPos(r, c)
                 children.importMFNodeFromString(
                     -1,
                     f"Wall {{ translation {x} {y} 0 size {CELL_SIZE} 0.01 0.05 }}",
