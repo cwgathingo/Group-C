@@ -1,0 +1,71 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/gctronic/e-puck/protos/E-puck.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/apartment_structure/protos/Wall.proto"
+
+WorldInfo {
+}
+Viewpoint {
+  orientation -0.47045365224486174 0.46868279882440955 0.7476695762003349 1.8560916133861614
+  position -0.004114746690110211 -0.678575576961103 1.4414648980484284
+}
+TexturedBackground {
+}
+E-puck {
+  translation 0.225 -0.225 0
+  rotation 0 0 1 1.5707996938995747
+  name "e-puck-maze"
+  controller "maze_solver"
+  turretSlot [
+    DistanceSensor {
+    }
+    Compass {
+    }
+    GPS {
+    }
+  ]
+}
+TexturedBackgroundLight {
+}
+RectangleArena {
+  floorSize 0.6 0.6
+  floorTileSize 0.3 0.3
+  wallHeight 0.05
+}
+Wall {
+  translation -0.15 -0.07 0
+  size 0.01 0.45 0.05
+}
+Wall {
+  translation 0.15 -0.225 0
+  name "wall(1)"
+  size 0.01 0.145 0.05
+}
+Wall {
+  translation 0.15 0.075 0
+  name "wall(3)"
+  size 0.01 0.145 0.05
+}
+Wall {
+  translation 0 -0.07 0
+  name "wall(2)"
+  size 0.01 0.16 0.05
+}
+Wall {
+  translation 0 0.234 0
+  name "wall(4)"
+  size 0.01 0.16 0.05
+}
+Wall {
+  translation 0.0767822 -0.145623 0
+  name "wall(5)"
+  size 0.16 0.01 0.05
+}
+Wall {
+  translation 0.075 0.155 0
+  name "wall(6)"
+  size 0.16 0.01 0.05
+}
