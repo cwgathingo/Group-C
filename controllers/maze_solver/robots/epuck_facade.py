@@ -4,7 +4,7 @@ from typing import Tuple, Optional
 from math import cos, pi, sin
 
 from controller import Robot as WebotsRobot, Lidar as WebotsLidar
-from maze_shared.logger import logInfo
+from maze_shared.logger import logDebug
 
 from .robot_interface import (
     RobotFacade,
@@ -29,7 +29,7 @@ from maze_shared.direction_utils import (
 # Effective wheel radius and track width for the Webots e-puck model.
 # These were tuned empirically so that encoder-based odometry matches
 # the simulated forward motion and turn angles. They do NOT necessarily
-# match the real e-puck’s physical dimensions.
+# match the real e-puck's physical dimensions.
 WHEEL_RADIUS = 0.02  # meters
 TRACK_WIDTH = 0.057
 
@@ -38,8 +38,8 @@ POSITION_TOLERANCE = 0.0005
 ANGLE_TOLERANCE = 0.03  # ~1.7 degrees
 
 # Proximity sensor thresholds for treating readings as "wall detected".
-IR_SESNOR_WALL_THRESHOLD = 80
-FRONT_SESNOR_WALL_THRESHOLD = 900
+IR_SENSOR_WALL_THRESHOLD = 80
+FRONT_SENSOR_WALL_THRESHOLD = 900
 
 """
 Convert a maze Direction into a world-frame orientation angle.
@@ -133,7 +133,7 @@ class EPuckFacade(RobotFacade):
         self._startLeftEnc = None
         self._startRightEnc = None
 
-        # Enable IR Seonsors
+        # Enable IR Sensors
         self._irSensors = []
         for i in range(8):
             sensor = robot.getDevice(f"ps{i}")
@@ -154,7 +154,7 @@ class EPuckFacade(RobotFacade):
                 start = -self._lidarFov / 2.0
                 for i in range(self._lidarHRes):
                     self._lidarAngles.append(start + (i + 0.5) * step)
-            logInfo(
+            logDebug(
                 "[LIDAR] init hres=%s fov=%.3f blockRange=%.3f"
                 % (
                     self._lidarHRes,
@@ -380,7 +380,7 @@ class EPuckFacade(RobotFacade):
             abs(rightLateral) < threshold if rightLateral is not None else None
         )
 
-        logInfo(
+        logDebug(
             "[LIDAR] beams idx L/C/R=%s/%s/%s dist=%.3f/%.3f/%.3f ang=%.3f/%.3f/%.3f "
             "proj(fwd,lat)= (%.3f,%.3f)/(%.3f,%.3f)/(%.3f,%.3f) threshold=%.3f"
             % (
@@ -409,7 +409,7 @@ class EPuckFacade(RobotFacade):
         rightDir = rotateDirectionCounterClockwise(currentDir, -1)
         backDir = rotateDirectionCounterClockwise(currentDir, 2)
 
-        logInfo(
+        logDebug(
             f"[LIDAR] blocked? front={isFrontBlocked}, left={isLeftBlocked}, right={isRightBlocked}, back=None"
         )
         return {
@@ -432,9 +432,9 @@ class EPuckFacade(RobotFacade):
             if (
                 (
                     max(self._irSensors[i].getValue() for i in frontSensorIndices)
-                    > IR_SESNOR_WALL_THRESHOLD
+                    > IR_SENSOR_WALL_THRESHOLD
                 )
-                or (self._frontSensor.getValue() < FRONT_SESNOR_WALL_THRESHOLD)
+                or (self._frontSensor.getValue() < FRONT_SENSOR_WALL_THRESHOLD)
             )
             else None
         )
@@ -442,7 +442,7 @@ class EPuckFacade(RobotFacade):
             True
             if (
                 max(self._irSensors[i].getValue() for i in leftSensorsIndices)
-                > IR_SESNOR_WALL_THRESHOLD
+                > IR_SENSOR_WALL_THRESHOLD
             )
             else None
         )
@@ -450,7 +450,7 @@ class EPuckFacade(RobotFacade):
             True
             if (
                 max(self._irSensors[i].getValue() for i in rightSensorsIndices)
-                > IR_SESNOR_WALL_THRESHOLD
+                > IR_SENSOR_WALL_THRESHOLD
             )
             else None
         )
@@ -633,7 +633,7 @@ class EPuckFacade(RobotFacade):
         # Debug
         # print(f"[EPuckFacade] turn action={self._currentAction.name} dtheta={dtheta:.3f} rad")
 
-        # If still outside the [target ± ANGLE_TOLERANCE] band,
+        # If still outside the [target +/- ANGLE_TOLERANCE] band,
         # the 90-degree turn is not complete yet, so continue turning.
         if abs(turned - target) > ANGLE_TOLERANCE:
             return
@@ -707,9 +707,9 @@ class EPuckFacade(RobotFacade):
     """
 
     def cancelAction(self) -> None:
-        # TODO: stop motors
-        # self._leftMotor.setVelocity(0.0)
-        # self._rightMotor.setVelocity(0.0)
+        # Stop motors immediately
+        self._leftMotor.setVelocity(0.0)
+        self._rightMotor.setVelocity(0.0)
         # TODO: wire this into an emergency stop path (e.g. if a sudden wall
         # is detected while moving forward) once higher-level detection exists.
 

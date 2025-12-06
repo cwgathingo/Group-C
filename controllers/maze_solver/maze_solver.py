@@ -174,7 +174,7 @@ class MazeController:
                 break
             # 2. Sense environment and 3. update maze belief
             self._senseAndUpdateMap()
-            if True or IS_DEBUG:
+            if IS_DEBUG:
                 logDebug("Map after sensing:")
                 self._maze.printAsciiMap()
 
@@ -419,17 +419,10 @@ class MazeController:
     Compute a wavefront (NF1/grassfire) distance transform from the goal,
     using a breadth-first expansion. Each traversable neighbour of a cell
     is assigned a cost one greater than its parent's, producing a discrete
-    distance field over the maze.
-
-    This corresponds to the wavefront planner described in:
-
-    Siegwart, R., Nourbakhsh, I. & Scaramuzza, D. (2011).
-    Introduction to Autonomous Mobile Robots (2nd ed.). MIT Press.
-    See Section 6.3.1.2, discussion of breadth-first search and the
-    wavefront expansion algorithm (NF1/grassfire). 
-    """
-    """
-    Compute a wavefront distance matrix from the goal to every cell.
+    distance field over the maze. This corresponds to the wavefront planner
+    described in Siegwart, Nourbakhsh and Scaramuzza (2011), Introduction
+    to Autonomous Mobile Robots (2nd ed.), Section 6.3.1.2 on breadth-first
+    search and the wavefront expansion algorithm (NF1/grassfire).
 
     @return Matrix of shortest path estimates (inf for unreachable).
     """
@@ -531,7 +524,7 @@ class MazeController:
       3) Select neighbours whose wavefront value is exactly
          currentDist - 1 (i.e. one step closer to the goal).
       4) If there are multiple candidates, choose the direction that
-         best matches the robot’s current heading.
+         best matches the robot's current heading.
       5) Convert the chosen direction into a MotionAction.
 
     If no neighbour with a finite distance-1 value exists, the method
@@ -544,7 +537,8 @@ class MazeController:
     def _decideNextAction(self) -> Optional[MotionAction]:
         # 1. Recompute and print wavefront
         wfm = self._computeWavefront()
-        self._printWavefront(wfm)
+        if IS_DEBUG:
+            self._printWavefront(wfm)
 
         # 2. Get current cell and its distance
         row, col = self._currentCell
@@ -620,8 +614,8 @@ class MazeController:
     """
 
     def _stopMotors(self) -> None:
-        # TODO: set motor velocities to 0
-        pass
+        if self._robotFacade is not None:
+            self._robotFacade.cancelAction()
 
     """
     Optional fun routine for the end of the maze.
