@@ -3,7 +3,7 @@
 from typing import Tuple
 from enum import Enum
 
-SEED = 2004
+SEED = 2005
 
 # Maze dimensions (in cells)
 ROWS: int = 6

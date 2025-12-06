@@ -174,7 +174,7 @@ class MazeController:
                 break
             # 2. Sense environment and 3. update maze belief
             self._senseAndUpdateMap()
-            if IS_DEBUG:
+            if True or IS_DEBUG:
                 logDebug("Map after sensing:")
                 self._maze.printAsciiMap()
 
@@ -366,6 +366,7 @@ class MazeController:
             mazeOriginWorld=self._mazeOriginWorld,
             startCell=startCell,
             startDirection=self._currentDirection,
+            perceptionMode="lidar",
         )
 
         print(
@@ -485,8 +486,8 @@ class MazeController:
     """
 
     def _printWavefront(self, wfMatrix: List[List[int]]):
-        if not IS_DEBUG:
-            return
+        # if not IS_DEBUG:
+        # return
 
         rows = len(wfMatrix)
         cols = len(wfMatrix[0])

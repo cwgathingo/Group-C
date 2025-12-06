@@ -3,7 +3,8 @@
 from typing import Tuple, Optional
 from math import cos, pi, sin
 
-from controller import Robot as WebotsRobot
+from controller import Robot as WebotsRobot, Lidar as WebotsLidar
+from maze_shared.logger import logInfo
 
 from .robot_interface import (
     RobotFacade,
@@ -95,9 +96,16 @@ class EPuckFacade(RobotFacade):
         mazeOriginWorld: Tuple[float, float],
         startCell: Cell,
         startDirection: Direction,
+        perceptionMode: str = "lidar",  # "ir" or "lidar"
     ) -> None:
 
         self._robot = robot
+        self._perceptionMode = perceptionMode
+        self._lidar: Optional[WebotsLidar] = None
+        self._lidarHRes: Optional[int] = None
+        self._lidarFov: Optional[float] = None
+        self._lidarAngles: list[float] = []
+        self._lidarBlockRange: float = cellSizeMeters * 0.55
 
         # Maze geometry
         self._cellSize = cellSizeMeters
@@ -133,6 +141,27 @@ class EPuckFacade(RobotFacade):
             self._irSensors.append(sensor)
         self._frontSensor = robot.getDevice("distance sensor")
         self._frontSensor.enable(basicStepMs)
+
+        # Lidar
+        if self._perceptionMode == "lidar":
+            self._lidar = robot.getDevice("lidar")
+            self._lidar.enable(basicStepMs)
+            self._lidar.enablePointCloud()
+            self._lidarHRes = self._lidar.getHorizontalResolution()
+            self._lidarFov = self._lidar.getFov()
+            if self._lidarHRes and self._lidarFov:
+                step = self._lidarFov / self._lidarHRes
+                start = -self._lidarFov / 2.0
+                for i in range(self._lidarHRes):
+                    self._lidarAngles.append(start + (i + 0.5) * step)
+            logInfo(
+                "[LIDAR] init hres=%s fov=%.3f blockRange=%.3f"
+                % (
+                    self._lidarHRes,
+                    self._lidarFov if self._lidarFov is not None else 0.0,
+                    self._lidarBlockRange,
+                )
+            )
 
         # set speed scalar
         self._baseForwardSpeedFrac = 0.6
@@ -307,13 +336,94 @@ class EPuckFacade(RobotFacade):
       - None  : no reliable observation (treated as UNKNOWN)
 
     @return: Mapping Direction -> Optional[bool], where True indicates
-             a detected wall and None indicates no reliable reading.
+            a detected wall and None indicates no reliable reading.
     """
 
+    def _senseLocalPassagesLidar(self):
+        if self._lidar is None or self._lidarHRes is None:
+            return self._senseLocalPassagesIR()
+
+        ranges = self._lidar.getRangeImage() or []
+        beamCount = len(ranges)
+        if beamCount == 0:
+            return self._senseLocalPassagesIR()
+
+        leftIdx = 0
+        centreIdx = beamCount // 2
+        rightIdx = beamCount - 1
+
+        def beam(idx: int) -> Tuple[float, float]:
+            dist = ranges[idx]
+            angle = self._lidarAngles[idx] if idx < len(self._lidarAngles) else 0.0
+            return dist, angle
+
+        leftDist, leftAngle = beam(leftIdx)
+        centreDist, centerAngle = beam(centreIdx)
+        rightDist, rightAngle = beam(rightIdx)
+
+        def getBeamVector(dist: float, angle: float) -> tuple[float, float]:
+            return dist * cos(angle), dist * sin(angle)
+
+        centreForward, centreLateral = getBeamVector(centreDist, centerAngle)
+        leftForward, leftLateral = getBeamVector(leftDist, leftAngle)
+        rightForward, rightLateral = getBeamVector(rightDist, rightAngle)
+
+        threshold = self._lidarBlockRange
+
+        isFrontBlocked = (
+            centreForward < threshold if centreForward is not None else None
+        )
+        isLeftBlocked = (
+            abs(leftLateral) < threshold if leftLateral is not None else None
+        )
+        isRightBlocked = (
+            abs(rightLateral) < threshold if rightLateral is not None else None
+        )
+
+        logInfo(
+            "[LIDAR] beams idx L/C/R=%s/%s/%s dist=%.3f/%.3f/%.3f ang=%.3f/%.3f/%.3f "
+            "proj(fwd,lat)= (%.3f,%.3f)/(%.3f,%.3f)/(%.3f,%.3f) threshold=%.3f"
+            % (
+                leftIdx,
+                centreIdx,
+                rightIdx,
+                leftDist,
+                centreDist,
+                rightDist,
+                leftAngle,
+                centerAngle,
+                rightAngle,
+                leftForward,
+                leftLateral,
+                centreForward,
+                centreLateral,
+                rightForward,
+                rightLateral,
+                threshold,
+            )
+        )
+
+        currentDir = self._currentDirection
+        frontDir = currentDir
+        leftDir = rotateDirectionCounterClockwise(currentDir, 1)
+        rightDir = rotateDirectionCounterClockwise(currentDir, -1)
+        backDir = rotateDirectionCounterClockwise(currentDir, 2)
+
+        logInfo(
+            f"[LIDAR] blocked? front={isFrontBlocked}, left={isLeftBlocked}, right={isRightBlocked}, back=None"
+        )
+        return {
+            frontDir: isFrontBlocked,
+            leftDir: isLeftBlocked,
+            rightDir: isRightBlocked,
+            backDir: None,  # no rear lidar coverage
+        }
+
     def senseLocalPassages(self):
-        # Debug
-        # print("Raw Sensors: ", self._readIrRaw())
-        # print("Front Sensor: ", self._frontSensor.getValue())
+        if self._perceptionMode == "lidar":
+            return self._senseLocalPassagesLidar()
+
+        # IR fallback
         frontSensorIndices = [0, 7]
         leftSensorsIndices = [5]
         rightSensorsIndices = [2]
