@@ -4,6 +4,7 @@ import sys
 # Add the parent 'controllers' directory to sys.path so maze_shared can be imported
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
+import heapq
 from collections import deque
 from math import inf
 from typing import Dict, List, Optional, Tuple
@@ -17,13 +18,18 @@ from maze_shared.maze_config import (
     CELL_SIZE as DEFAULT_CELL_SIZE,
     COLS as DEFAULT_COLS,
     DEFAULT_GOAL,
+    DEFAULT_PLANNER,
+    DEFAULT_PERCEPTION_MODE,
     DEFAULT_START,
+    A_STAR_UNKNOWN_COST,
+    A_STAR_TRACE,
     MAZE_ORIGIN,
     ROWS as DEFAULT_ROWS,
     SEED as DEFAULT_SEED,
     LOG_LEVEL,
     LogLevel,
 )
+from maze_shared.direction_utils import getDirectionDelta
 from maze_shared.logger import logDebug, logInfo, logWarn, logError
 
 IS_DEBUG = LOG_LEVEL == LogLevel.DEBUG
@@ -72,6 +78,7 @@ class MazeController:
         goalCell: Cell,
         cellSizeMeters: float,
         mazeOriginWorld: Tuple[float, float],
+        planner: str = DEFAULT_PLANNER,
     ) -> None:
         # Webots robot
         self._robot = Robot()
@@ -98,6 +105,8 @@ class MazeController:
             "cell_size": cellSizeMeters,
             "seed": DEFAULT_SEED,
             "startDir": startDirection,
+            "planner": planner,
+            "perception": DEFAULT_PERCEPTION_MODE,
         }
 
         # Maze belief (populated after runtime config arrives)
@@ -109,6 +118,9 @@ class MazeController:
 
         # Robot motion facade (e-puck implementation)
         self._robotFacade: Optional[RobotFacade] = None
+
+        # Planner selection ("wavefront" or "a_star")
+        self._planner: str = planner.lower()
 
         # Track the high-level action requested for execution.
         # None = no pending action (idle from planning perspective).
@@ -237,7 +249,7 @@ class MazeController:
             f"rows={merged.get('rows')} cols={merged.get('cols')} "
             f"start={merged.get('start')} goal={merged.get('goal')} "
             f"cell_size={merged.get('cell_size')} seed={merged.get('seed')} "
-            f"startDir={merged.get('startDir')}"
+            f"startDir={merged.get('startDir')} planner={merged.get('planner')}"
         )
         return merged
 
@@ -264,6 +276,10 @@ class MazeController:
                     parsed[key] = int(rawValue)
                 except ValueError:
                     continue
+            elif key == "planner":
+                parsed[key] = rawValue.strip().lower()
+            elif key in ("perception", "sensor_mode"):
+                parsed["perception"] = rawValue.strip().lower()
             elif key == "startdir":
                 parsed["startDir"] = rawValue.lower()
             elif key == "cell_size":
@@ -297,6 +313,8 @@ class MazeController:
             "seed": parsed.get("seed", self._defaultConfig["seed"]),
             "world_ready": parsed.get("world_ready", 0),
             "startDir": parsed.get("startDir", self._defaultConfig["startDir"]),
+            "planner": parsed.get("planner", self._defaultConfig["planner"]),
+            "perception": parsed.get("perception", self._defaultConfig["perception"]),
         }
         return config
 
@@ -359,6 +377,18 @@ class MazeController:
         self._maze = Maze(rows, cols, startCell, goalCell)
         self._currentCell = startCell
         self._currentDirection = startDirection
+        self._planner = str(config.get("planner", self._planner)).lower()
+        if self._planner not in ("wavefront", "a_star"):
+            logWarn(
+                f"[maze_solver] Unknown planner '{self._planner}', defaulting to {DEFAULT_PLANNER}."
+            )
+            self._planner = DEFAULT_PLANNER
+        perceptionMode = str(config.get("perception", DEFAULT_PERCEPTION_MODE)).lower()
+        if perceptionMode not in ("lidar", "ir"):
+            logWarn(
+                f"[maze_solver] Unknown perception mode '{perceptionMode}', defaulting to {DEFAULT_PERCEPTION_MODE}."
+            )
+            perceptionMode = DEFAULT_PERCEPTION_MODE
 
         self._robotFacade = EPuckFacade(
             robot=self._robot,
@@ -366,13 +396,14 @@ class MazeController:
             mazeOriginWorld=self._mazeOriginWorld,
             startCell=startCell,
             startDirection=self._currentDirection,
-            perceptionMode="lidar",
+            perceptionMode=perceptionMode,
         )
 
         print(
             "[maze_solver] runtime config applied: "
             f"rows={rows}, cols={cols}, start={startCell}, goal={goalCell}, "
-            f"cell_size={cellSizeMeters}, seed={seed}, startDir={self._currentDirection.name.lower()}"
+            f"cell_size={cellSizeMeters}, seed={seed}, startDir={self._currentDirection.name.lower()}, "
+            f"planner={self._planner}, perception={perceptionMode}"
         )
 
     """
@@ -402,18 +433,23 @@ class MazeController:
 
         for direction in Direction:
             blocked = localPassages.get(direction)
-            if blocked:
-                neighbour = self._maze.getNeighbour(self._currentCell, direction)
-                if neighbour is None:
-                    logDebug(
-                        f"[maze_solver] skipping boundary passage update cell={self._currentCell} dir={direction}"
-                    )
-                    continue
-                self._maze.markPassageState(
-                    self._currentCell,
-                    direction,
-                    PassageState.BLOCKED,
+            # Skip when sensor provided no observation
+            if blocked is None:
+                continue
+
+            neighbour = self._maze.getNeighbour(self._currentCell, direction)
+            if neighbour is None:
+                logDebug(
+                    f"[maze_solver] skipping boundary passage update cell={self._currentCell} dir={direction}"
                 )
+                continue
+
+            state = PassageState.BLOCKED if blocked else PassageState.OPEN
+            self._maze.markPassageState(
+                self._currentCell,
+                direction,
+                state,
+            )
 
     """
     Compute a wavefront (NF1/grassfire) distance transform from the goal,
@@ -515,26 +551,59 @@ class MazeController:
 
     """
     Decide the next high-level motion action based on the current
-    wavefront distances and maze belief.
+    maze belief using an A* search. UNKNOWN passages are treated as
+    traversable; BLOCKED passages are excluded. The resulting path is
+    reduced to the next step from the current cell, which is then
+    converted into a MotionAction using the current heading preference.
 
-    The policy is:
-      1) Recompute the wavefront distance matrix from the goal.
-      2) At the current cell, consider all non-BLOCKED neighbours
-         (UNKNOWN passages are treated as traversable).
-      3) Select neighbours whose wavefront value is exactly
-         currentDist - 1 (i.e. one step closer to the goal).
-      4) If there are multiple candidates, choose the direction that
-         best matches the robot's current heading.
-      5) Convert the chosen direction into a MotionAction.
-
-    If no neighbour with a finite distance-1 value exists, the method
-    returns None to signal that no progress toward the goal is possible
-    under the current belief.
+    If no path is available under the current belief, None is returned to
+    signal that planning failed.
 
     @return A value representing the chosen action.
     """
 
     def _decideNextAction(self) -> Optional[MotionAction]:
+        if self._maze is None or self._robotFacade is None or self._currentCell is None:
+            logWarn("[maze_solver] Planner cannot run; maze or facade not initialised.")
+            return None
+
+        if self._planner == "a_star":
+            return self._decideNextActionAStar()
+        # default to wavefront to preserve existing behaviour when unspecified
+        return self._decideNextActionWavefront()
+
+    """
+    A* planner wrapper that converts the next cell along the planned path
+    into a MotionAction.
+    """
+
+    def _decideNextActionAStar(self) -> Optional[MotionAction]:
+        path = self._planPathAStar(self._currentCell, self._maze.getGoal())
+        if path is None:
+            logWarn("A* could not find a path with the current belief; stopping.")
+            return None
+
+        # The current cell will be the first entry; take the next step.
+        if len(path) < 2:
+            logDebug("[maze_solver] A* returned a trivial path; nothing to do.")
+            return None
+
+        nextCell = path[1]
+        nextDir = self._directionBetweenCells(self._currentCell, nextCell)
+        if nextDir is None:
+            logWarn(
+                f"[maze_solver] A* produced non-adjacent step from {self._currentCell} to {nextCell}; aborting."
+            )
+            return None
+
+        return self._directionToAction(nextDir)
+
+    """
+    Wavefront (NF1/grassfire) planner using the previous behaviour. UNKNOWN
+    passages are treated as traversable; BLOCKED passages are excluded.
+    """
+
+    def _decideNextActionWavefront(self) -> Optional[MotionAction]:
         # 1. Recompute and print wavefront
         wfm = self._computeWavefront()
         if IS_DEBUG:
@@ -545,7 +614,7 @@ class MazeController:
         currentDist = wfm[row][col]
 
         if currentDist == inf:
-            print("Current cell has no path to goal under current belief.")
+            logWarn("Current cell has no path to goal under current belief.")
             return None
 
         # 3. Find candidate directions that move to a cell with distance-1
@@ -568,9 +637,8 @@ class MazeController:
                 candidateDirs.append(direction)
 
         if not candidateDirs:
-            print(
-                "No neighbour with wavefront value current-1; "
-                "cannot step closer to goal."
+            logWarn(
+                "No neighbour with wavefront value current-1; cannot step closer to goal."
             )
             return None
 
@@ -579,6 +647,118 @@ class MazeController:
 
         # 5. Convert desired direction into a MotionAction
         return self._directionToAction(nextDir)
+
+    """
+    Plan a path from start to goal using A* search on the current maze belief.
+    UNKNOWN passages are treated as traversable, while BLOCKED passages are
+    excluded. Returns a list of cells from start to goal (inclusive), or None
+    if no path is available under the current belief.
+    """
+
+    def _planPathAStar(self, start: Cell, goal: Cell) -> Optional[List[Cell]]:
+        trace = IS_DEBUG and A_STAR_TRACE
+        openHeap: List[Tuple[float, Cell]] = []
+        # heap entry: (fScore, hScore, headingBias, cell)
+        heapq.heappush(openHeap, (0.0, 0.0, 0, start))
+
+        cameFrom: Dict[Cell, Optional[Cell]] = {start: None}
+        gScore: Dict[Cell, float] = {start: 0.0}
+        closed: set[Cell] = set()
+        nodesExpanded = 0
+
+        while openHeap:
+            _, _, _, current = heapq.heappop(openHeap)
+            if current in closed:
+                continue
+            nodesExpanded += 1
+            if trace:
+                logDebug(
+                    f"[maze_solver] A* pop cell={current} g={gScore.get(current, inf):.3f}"
+                )
+
+            if current == goal:
+                path = self._reconstructPath(cameFrom, current)
+                if IS_DEBUG:
+                    logDebug(
+                        "[maze_solver] A* path stats: nodes_expanded=%d path_len=%d frontier=%d"
+                        % (nodesExpanded, len(path), len(openHeap))
+                    )
+                    logDebug(f"[maze_solver] A* path: {path}")
+                return path
+
+            closed.add(current)
+            for direction, pState in self._maze.getAllPassages(current).items():
+                if pState == PassageState.BLOCKED:
+                    continue
+
+                neighbour = self._maze.getNeighbour(current, direction)
+                if neighbour is None or neighbour in closed:
+                    continue
+
+                stepCost = (
+                    A_STAR_UNKNOWN_COST if pState == PassageState.UNKNOWN else 1.0
+                )
+                tentativeG = gScore[current] + stepCost
+                if tentativeG < gScore.get(neighbour, inf):
+                    cameFrom[neighbour] = current
+                    gScore[neighbour] = tentativeG
+                    hScore = self._manhattanHeuristic(neighbour, goal)
+                    fScore = tentativeG + hScore
+                    headingBias = self._headingBias(direction)
+                    heapq.heappush(openHeap, (fScore, hScore, headingBias, neighbour))
+                    if trace:
+                        logDebug(
+                            "[maze_solver] A* push cell=%s from=%s dir=%s g=%.3f h=%.3f f=%.3f bias=%d state=%s"
+                            % (
+                                neighbour,
+                                current,
+                                direction.name,
+                                tentativeG,
+                                hScore,
+                                fScore,
+                                headingBias,
+                                pState.name,
+                            )
+                        )
+
+        return None
+
+    """
+    Reconstruct the path from the A* cameFrom map, ending at goal.
+    """
+
+    def _reconstructPath(
+        self, cameFrom: Dict[Cell, Optional[Cell]], current: Cell
+    ) -> List[Cell]:
+        path: List[Cell] = [current]
+        while cameFrom[current] is not None:
+            current = cameFrom[current]  # type: ignore[assignment]
+            path.append(current)
+        path.reverse()
+        return path
+
+    """
+    Manhattan heuristic for A* (L1 distance in grid cells).
+    """
+
+    def _manhattanHeuristic(self, a: Cell, b: Cell) -> int:
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+    """
+    Heading bias for tie-breaking in A*; lower is better. Prefers continuing
+    straight, then right, then left, then back, mirroring _choosePreferredDirection.
+    """
+
+    def _headingBias(self, direction: Direction) -> int:
+        heading = self._currentDirection
+        delta = (int(direction) - int(heading)) % 4
+        if delta == 0:
+            return 0
+        if delta == 1:
+            return 1
+        if delta == 3:
+            return 2
+        return 3
 
     """
     Execute one atomic action and update the belief pose.
@@ -718,6 +898,20 @@ class MazeController:
             return 3  # back (delta == 2)
 
         return min(candidates, key=priority)
+
+    """
+    Convert a step between adjacent cells into a maze Direction. Returns None
+    when cells are not neighbours on the grid.
+    """
+
+    def _directionBetweenCells(self, origin: Cell, target: Cell) -> Optional[Direction]:
+        dRow = target[0] - origin[0]
+        dCol = target[1] - origin[1]
+        for direction in Direction:
+            dirRow, dirCol = getDirectionDelta(direction)
+            if (dirRow, dirCol) == (dRow, dCol):
+                return direction
+        return None
 
     """
     Convert the desired heading into a single MotionAction

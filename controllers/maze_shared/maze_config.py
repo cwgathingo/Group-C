@@ -12,6 +12,21 @@ COLS: int = 6
 # Cell size in meters
 CELL_SIZE: float = 0.14
 
+# Default planner strategy. Options currently supported in MazeController:
+#   - "wavefront" (NF1/grassfire)
+#   - "a_star"
+DEFAULT_PLANNER: str = "a_star"
+
+# Cost multiplier for traversing UNKNOWN passages in A* (values >1.0 make
+# the planner prefer explored/open space when possible).
+A_STAR_UNKNOWN_COST: float = 1
+
+# Default perception mode for the robot facade: "lidar" (default) or "ir".
+DEFAULT_PERCEPTION_MODE: str = "lidar"
+
+# Enable verbose A* tracing when LOG_LEVEL is DEBUG (can be noisy).
+A_STAR_TRACE: bool = False
+
 """
 Return the world (x, y) coordinates of the centre of cell (0, 0),
 assuming the world origin (0, 0) is at the centre of the maze.
@@ -54,4 +69,4 @@ class LogLevel(Enum):
 
 
 # Default log verbosity
-LOG_LEVEL: LogLevel = LogLevel.INFO
+LOG_LEVEL: LogLevel = LogLevel.DEBUG
