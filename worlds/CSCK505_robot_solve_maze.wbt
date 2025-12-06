@@ -10,7 +10,7 @@ WorldInfo {
 }
 Viewpoint {
   orientation -0.5773502691896258 0.5773502691896258 0.5773502691896258 2.0944
-  position -0.0009110914540850659 -0.0003617531628826104 2.609244897755373
+  position -0.000914112811250686 -0.000364774528591926 1.5407329230631834
 }
 TexturedBackground {
 }
@@ -58,25 +58,7 @@ DEF MAZE_ROBOT E-puck {
 TexturedBackgroundLight {
 }
 RectangleArena {
-  floorSize 0.8400000000000001 0.8400000000000001
-  floorTileSize 0.28 0.28
+  floorSize 0.1 0.1
+  floorTileSize 0.1 0.1
   wallHeight 0.001
-}
-Solid {
-  translation -0.35 0.35 0.02
-  children [
-    Shape {
-      appearance Appearance {
-        material Material {
-          diffuseColor 0 1 0
-          emissiveColor 0 0.5 0
-        }
-      }
-      geometry Cylinder {
-        height 0.02
-        radius 0.03
-      }
-    }
-  ]
-  name "goal_marker"
 }
