@@ -550,16 +550,16 @@ class MazeController:
         print()
 
     """
-    Decide the next high-level motion action based on the current
-    maze belief using an A* search. UNKNOWN passages are treated as
-    traversable; BLOCKED passages are excluded. The resulting path is
-    reduced to the next step from the current cell, which is then
-    converted into a MotionAction using the current heading preference.
+    Decide the next high-level motion action using the configured planner.
 
-    If no path is available under the current belief, None is returned to
-    signal that planning failed.
+    If self._planner is set to "a_star", the next action is chosen by
+    planning a path with A* and taking the first step. Otherwise, a
+    wavefront-based planner is used to select an action. If planning
+    fails under the current maze belief, None is returned to indicate
+    that no valid action is available.
 
-    @return A value representing the chosen action.
+    @return A MotionAction representing the chosen action, or None if
+             planning fails or no action can be determined.
     """
 
     def _decideNextAction(self) -> Optional[MotionAction]:
@@ -575,6 +575,8 @@ class MazeController:
     """
     A* planner wrapper that converts the next cell along the planned path
     into a MotionAction.
+
+    @return Next motion action, or None if no path is available.
     """
 
     def _decideNextActionAStar(self) -> Optional[MotionAction]:
@@ -599,8 +601,19 @@ class MazeController:
         return self._directionToAction(nextDir)
 
     """
-    Wavefront (NF1/grassfire) planner using the previous behaviour. UNKNOWN
-    passages are treated as traversable; BLOCKED passages are excluded.
+    Decide the next motion action using a wavefront (NF1/grassfire) planner.
+
+    A fresh wavefront distance field is computed from the goal. From the
+    current cell, all non-BLOCKED neighbours are examined and those with
+    wavefront value currentDist - 1 (one step closer to the goal) are
+    collected as candidates. UNKNOWN passages are treated as traversable.
+
+    If no such neighbour exists, planning is considered to have failed.
+    Otherwise, the preferred neighbour direction is chosen according to
+    the current heading and converted into a MotionAction.
+
+    @return Next motion action, or None if no step towards the goal is
+             available under the current belief.
     """
 
     def _decideNextActionWavefront(self) -> Optional[MotionAction]:
@@ -617,7 +630,7 @@ class MazeController:
             logWarn("Current cell has no path to goal under current belief.")
             return None
 
-        # 3. Find candidate directions that move to a cell with distance-1
+        # 3. Collect neighbours with wavefront value (currentDist - 1)
         passages = self._maze.getAllPassages(self._currentCell)
         candidateDirs: List[Direction] = []
 
@@ -642,7 +655,7 @@ class MazeController:
             )
             return None
 
-        # 4. Choose the best direction according to current heading
+        # 4. Pick preferred neighbour direction based on current headin
         nextDir = self._choosePreferredDirection(candidateDirs)
 
         # 5. Convert desired direction into a MotionAction
@@ -650,9 +663,21 @@ class MazeController:
 
     """
     Plan a path from start to goal using A* search on the current maze belief.
-    UNKNOWN passages are treated as traversable, while BLOCKED passages are
-    excluded. Returns a list of cells from start to goal (inclusive), or None
-    if no path is available under the current belief.
+
+    BLOCKED passages are excluded. UNKNOWN passages are allowed but use a
+    configurable step cost (A_STAR_UNKNOWN_COST), which lets the planner
+    prefer known-open cells when desired.
+
+    The priority queue uses f = g + h, with g the accumulated cost and h a
+    Manhattan-distance heuristic. A small heading-bias term favours actions
+    aligned with the current heading.
+
+    This corresponds to the standard A* formulation in Siegwart, Nourbakhsh
+    & Scaramuzza (2011), Section 5.4.
+
+    @param start: Start cell (row, col).
+    @param goal: Goal cell (row, col).
+    @return List of cells from start to goal, or None if no path exists.
     """
 
     def _planPathAStar(self, start: Cell, goal: Cell) -> Optional[List[Cell]]:
@@ -697,7 +722,7 @@ class MazeController:
 
                 stepCost = (
                     A_STAR_UNKNOWN_COST if pState == PassageState.UNKNOWN else 1.0
-                )
+                )  # higher cost for UNKNOWN when configured
                 tentativeG = gScore[current] + stepCost
                 if tentativeG < gScore.get(neighbour, inf):
                     cameFrom[neighbour] = current
@@ -747,6 +772,9 @@ class MazeController:
     """
     Heading bias for tie-breaking in A*; lower is better. Prefers continuing
     straight, then right, then left, then back, mirroring _choosePreferredDirection.
+
+    @param direction Candidate neighbour direction.
+    @return Integer priority; lower values are preferred.
     """
 
     def _headingBias(self, direction: Direction) -> int:
@@ -902,6 +930,10 @@ class MazeController:
     """
     Convert a step between adjacent cells into a maze Direction. Returns None
     when cells are not neighbours on the grid.
+
+    @param origin Cell (row, col) where the step starts.
+    @param target Cell (row, col) where the step ends.
+    @return Direction if target is adjacent to origin, otherwise None.
     """
 
     def _directionBetweenCells(self, origin: Cell, target: Cell) -> Optional[Direction]:

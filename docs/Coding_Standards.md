@@ -40,8 +40,8 @@ Example:
 ```python
 """
 Calculates the factorial of a number
-@param n: Input integer to take the factorial of
-@return: Factorial of input
+@param n Input integer to take the factorial of
+@return Factorial of input
 """
 def factorial(n):
     result = 1

@@ -865,7 +865,7 @@ class EPuckFacade(RobotFacade):
         x = originX + col * cellSize
         y = originY - row * cellSize
 
-    @param cell Maze cell as (row, col).
+    @param cell: Maze cell as (row, col).
     @return World position (x, y) of the cell centre.
     """
 
