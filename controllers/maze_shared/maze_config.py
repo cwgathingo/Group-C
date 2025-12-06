@@ -3,7 +3,7 @@
 from typing import Tuple
 from enum import Enum
 
-SEED = 2005
+SEED = 2007
 
 # Maze dimensions (in cells)
 ROWS: int = 6
@@ -69,4 +69,4 @@ class LogLevel(Enum):
 
 
 # Default log verbosity
-LOG_LEVEL: LogLevel = LogLevel.DEBUG
+LOG_LEVEL: LogLevel = LogLevel.INFO
