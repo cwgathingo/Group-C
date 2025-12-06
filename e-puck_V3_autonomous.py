@@ -4,6 +4,7 @@ import math
 robot = Robot()
 timestep = int(robot.getBasicTimeStep())
 
+
 # Initialise sensors
 gps = robot.getDevice("gps")
 gps.enable(timestep)
@@ -32,13 +33,14 @@ MAX_SPEED = 6.28
 # Target position
 TARGET_POSITION = [0.15, -0.24, 0]
 GOAL_TOLERANCE = 0.05
-MAX_TIME = 900
+MAX_TIME = 60
 
 # Sensor indices
 SENSOR_FRONT = 0
 SENSOR_LEFT = 2
 SENSOR_RIGHT = 3
 
+# Reference 1: Threshold-based Control methodology which aligns with Braitenberg's vehicle concepts, where simple sensor-motor connections produce complex emergent behaviours (Braitenberg, 1984).
 # Thresholds based on sensor readings (60-70 = open)
 FRONT_BLOCKED = 100   # If front > 60, can't go forward
 OPEN_SPACE = 50      # If side < 50, it's open
@@ -94,6 +96,8 @@ last_turn_time = 0
 turn_in_progress = False
 turn_direction = ""
 
+# Reference 2: The code implements threshold-based decision making using four distance sensors positioned around the robot (front, left, right, and rear). This resembles the obstacle avoidance in Bug 1 and Bug 2 algorithms described by Lumelsky and Stepanov (1986)
+# The front sensor acts as the primary obstacle detector, triggering avoidance manoeuvres when readings exceed a predefined threshold (FRONT_BLOCKED = 100) (Braitenberg, 1984; Lumelsky and Stepanov, 1986).
 while robot.step(timestep) != -1:
     # Check time
     elapsed = robot.getTime() - start_time
@@ -163,7 +167,8 @@ while robot.step(timestep) != -1:
             print(f"  → Turning RIGHT (L:{left} vs R:{right})")
         continue
     
-    # Rule 2: DEFAULT - Always go forward unless there's a good reason not to
+    # Reference 3: Reactive Navigation which follows principles established by Brooks (1986) in his seminal work on behaviour-based robotics, which advocated for simple, reactive behaviours over complex world models (Brooks, 1986).
+    # Default Reaction - Always go forward unless there's open space on left/right side.
     # Just go forward at good speed
     base_speed = MAX_SPEED * 0.8
     left_motor.setVelocity(base_speed)
