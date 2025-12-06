@@ -321,22 +321,100 @@ class EPuckFacade(RobotFacade):
         self._requestTurn90(MotionAction.TURN_LEFT_90)
 
     """
-    Sense nearby passages using the e-puck IR sensors.
+    Sense nearby passages using the configured perception mode.
+
+    When perceptionMode is \"lidar\", the lidar-based helper runs first
+    and falls back to IR if unavailable. When perceptionMode is \"ir\",
+    only the IR helper runs. Lidar returns True when a wall is likely,
+    False when range exceeds the block threshold, and None when no
+    usable reading exists. IR returns True when a wall is likely and
+    None when the reading is inconclusive.
+
+    @return Mapping Direction -> Optional[bool], where True indicates a
+            detected wall, False indicates a clear passage (lidar only),
+            and None indicates no reliable reading.
+    """
+
+    def senseLocalPassages(self):
+        if self._perceptionMode == "lidar":
+            return self._senseLocalPassagesLidar()
+
+        return self._senseLocalPassagesIR()
+
+    """
+    Sense nearby passages using IR sensors only.
 
     The front, left and right proximity sensors, together with the
-    dedicated forward distance sensor, are used to determine whether
-    a wall is likely to be present adjacent to the robot relative to
-    its current heading.
+    dedicated forward distance sensor, contribute to wall detection
+    relative to the current heading. Readings above calibrated thresholds
+    are treated as positive evidence of a wall; lower readings yield no
+    observation rather than a clear passage claim.
 
-    The IR sensors provide reliable positive evidence of a wall only
-    when readings exceed a calibrated threshold. Readings below this
-    threshold cannot be interpreted as evidence that a passage is clear.
-    Therefore this method does not return False. Instead:
-      - True  : a wall is detected with sufficient confidence
-      - None  : no reliable observation (treated as UNKNOWN)
+    @return Mapping Direction -> Optional[bool], where True indicates a
+            detected wall and None indicates no reliable reading.
+    """
 
-    @return: Mapping Direction -> Optional[bool], where True indicates
-            a detected wall and None indicates no reliable reading.
+    def _senseLocalPassagesIR(self):
+        frontSensorIndices = [0, 7]
+        leftSensorsIndices = [5]
+        rightSensorsIndices = [2]
+        isFrontBlocked = (
+            True
+            if (
+                (
+                    max(self._irSensors[i].getValue() for i in frontSensorIndices)
+                    > IR_SENSOR_WALL_THRESHOLD
+                )
+                or (self._frontSensor.getValue() < FRONT_SENSOR_WALL_THRESHOLD)
+            )
+            else None
+        )
+        isLeftBlocked = (
+            True
+            if (
+                max(self._irSensors[i].getValue() for i in leftSensorsIndices)
+                > IR_SENSOR_WALL_THRESHOLD
+            )
+            else None
+        )
+        isRightBlocked = (
+            True
+            if (
+                max(self._irSensors[i].getValue() for i in rightSensorsIndices)
+                > IR_SENSOR_WALL_THRESHOLD
+            )
+            else None
+        )
+
+        currentDir = self._currentDirection
+
+        frontDir = currentDir
+        leftDir = rotateDirectionCounterClockwise(currentDir, 1)
+        rightDir = rotateDirectionCounterClockwise(currentDir, -1)
+        backDir = rotateDirectionCounterClockwise(currentDir, 2)
+
+        return {
+            frontDir: isFrontBlocked,
+            leftDir: isLeftBlocked,
+            rightDir: isRightBlocked,
+            backDir: None,
+        }
+
+    """
+    Sense nearby passages using the lidar sensor.
+
+    Three lidar beams (left edge, centre, right edge) are sampled and
+    their distances projected into forward and lateral components. Each
+    direction is classified using a simple threshold test:
+      - True   : obstacle within threshold (blocked),
+      - False  : beam exceeds threshold (clear),
+      - None   : no reliable reading.
+
+    Results are mapped to maze-relative directions (front, left, right).
+    The back direction is always None because the lidar provides no rear
+    coverage.
+
+    @return: Mapping Direction -> Optional[bool], where values indicate
     """
 
     def _senseLocalPassagesLidar(self):
@@ -417,56 +495,6 @@ class EPuckFacade(RobotFacade):
             leftDir: isLeftBlocked,
             rightDir: isRightBlocked,
             backDir: None,  # no rear lidar coverage
-        }
-
-    def senseLocalPassages(self):
-        if self._perceptionMode == "lidar":
-            return self._senseLocalPassagesLidar()
-
-        # IR fallback
-        frontSensorIndices = [0, 7]
-        leftSensorsIndices = [5]
-        rightSensorsIndices = [2]
-        isFrontBlocked = (
-            True
-            if (
-                (
-                    max(self._irSensors[i].getValue() for i in frontSensorIndices)
-                    > IR_SENSOR_WALL_THRESHOLD
-                )
-                or (self._frontSensor.getValue() < FRONT_SENSOR_WALL_THRESHOLD)
-            )
-            else None
-        )
-        isLeftBlocked = (
-            True
-            if (
-                max(self._irSensors[i].getValue() for i in leftSensorsIndices)
-                > IR_SENSOR_WALL_THRESHOLD
-            )
-            else None
-        )
-        isRightBlocked = (
-            True
-            if (
-                max(self._irSensors[i].getValue() for i in rightSensorsIndices)
-                > IR_SENSOR_WALL_THRESHOLD
-            )
-            else None
-        )
-
-        currentDir = self._currentDirection
-
-        frontDir = currentDir
-        leftDir = rotateDirectionCounterClockwise(currentDir, 1)
-        rightDir = rotateDirectionCounterClockwise(currentDir, -1)
-        backDir = rotateDirectionCounterClockwise(currentDir, 2)
-
-        return {
-            frontDir: isFrontBlocked,
-            leftDir: isLeftBlocked,
-            rightDir: isRightBlocked,
-            backDir: None,
         }
 
     """
