@@ -497,8 +497,10 @@ def main():
         logInfo(f"[maze_builder] ready: {payload}")
 
     while supervisor.step(timestep) != -1:
-        updateTimeDisplay(timeDisplay, supervisor.getTime())
+        sim_time = supervisor.getTime()
+        updateTimeDisplay(timeDisplay, sim_time)
         if _pollStatusMessages(statusReceiver):
+            logInfo(f"[maze_builder] received stop; simulation time={sim_time:.2f}s")
             return
 
 

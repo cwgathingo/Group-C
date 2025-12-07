@@ -21,7 +21,6 @@ from maze_shared.maze_config import (
     DEFAULT_PLANNER,
     DEFAULT_PERCEPTION_MODE,
     DEFAULT_START,
-    EXPORT_FINAL_MAP_FILENAME,
     EXPORT_FINAL_MAP_TO_PNG,
     A_STAR_UNKNOWN_COST,
     A_STAR_TRACE,
@@ -32,9 +31,14 @@ from maze_shared.maze_config import (
     LogLevel,
 )
 from maze_shared.direction_utils import getDirectionDelta
+from maze_shared.map_export import export_belief_map_png
 from maze_shared.logger import logDebug, logInfo, logWarn, logError
 
 IS_DEBUG = LOG_LEVEL == LogLevel.DEBUG
+# Exported map images are written under project-level docs/maps
+MAP_EXPORT_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "docs", "maps")
+)
 
 
 """
@@ -99,6 +103,8 @@ class MazeController:
 
         self._mazeOriginWorld = mazeOriginWorld
         self._startDirection = startDirection
+        self._seed = DEFAULT_SEED
+        self._perceptionMode = DEFAULT_PERCEPTION_MODE
         self._defaultConfig = {
             "rows": rows,
             "cols": cols,
@@ -167,60 +173,72 @@ class MazeController:
             self._sendStatus("running")
         finalStatus: Optional[str] = None
 
-        while self._robot.step(self._timeStep) != -1:
+        try:
+            while self._robot.step(self._timeStep) != -1:
 
-            self._robotFacade.update(self._timeStep / 1000.0)
+                self._robotFacade.update(self._timeStep / 1000.0)
 
-            # 0. If an action is in progress, update it and skip planning
-            if self._robotFacade.isBusy():
-                continue
+                # 0. If an action is in progress, update it and skip planning
+                if self._robotFacade.isBusy():
+                    continue
 
-            # If an action was requested previously and the robot is now idle,
-            # handle the completion here.
-            if self._pendingAction is not None:
-                self._handleCompletedAction()
+                # If an action was requested previously and the robot is now idle,
+                # handle the completion here.
+                if self._pendingAction is not None:
+                    self._handleCompletedAction()
 
-            # 1. Check goal condition (only when robot is idle)
-            if self._currentCell == self._maze.getGoal():
-                logInfo("\n==============================")
-                logInfo("  GOAL REACHED!  ")
-                logInfo("==============================\n")
-                self._sendStatus("goal")
-                finalStatus = "goal"
-                # Optional: victory dance / spin / LED flash
-                self._victoryCelebration()
-                # Ensure motors are stopped
-                self._stopMotors()
-                # Exit the loop cleanly
-                break
-            # 2. Sense environment and 3. update maze belief
-            self._senseAndUpdateMap()
-            if IS_DEBUG:
-                logDebug("Map after sensing:")
-                self._maze.printAsciiMap()
-
-            # 4. Decide next action based on the updated belief
-            action = self._decideNextAction()
-
-            # Deal with edge cases, for example pathFinder doesn't have a path
-            if action is None:
-                logWarn("No action decided; stopping.")
-                self._sendStatus("stuck")
-                finalStatus = "stuck"
-                self._stopMotors()
-                break
-
-            # 5. Start executing the chosen action (async movement)
-            self._executeAction(action)
-
-        logInfo("Final belief map:")
-        self._maze.printAsciiMap()
-
-        # Give the supervisor a chance to receive the final status message
-        if finalStatus is not None and self._statusEmitter is not None:
-            for _ in range(3):
-                if self._robot.step(self._timeStep) == -1:
+                # 1. Check goal condition (only when robot is idle)
+                if self._currentCell == self._maze.getGoal():
+                    logInfo("\n==============================")
+                    logInfo("  GOAL REACHED!  ")
+                    logInfo("==============================\n")
+                    self._sendStatus("goal")
+                    finalStatus = "goal"
+                    # Optional: victory dance / spin / LED flash
+                    self._victoryCelebration()
+                    # Ensure motors are stopped
+                    self._stopMotors()
+                    # Exit the loop cleanly
                     break
+                # 2. Sense environment and 3. update maze belief
+                self._senseAndUpdateMap()
+                if IS_DEBUG:
+                    logDebug("Map after sensing:")
+                    self._maze.printAsciiMap()
+
+                # 4. Decide next action based on the updated belief
+                action = self._decideNextAction()
+
+                # Deal with edge cases, for example pathFinder doesn't have a path
+                if action is None:
+                    logWarn("No action decided; stopping.")
+                    self._sendStatus("stuck")
+                    finalStatus = "stuck"
+                    self._stopMotors()
+                    break
+
+                # 5. Start executing the chosen action (async movement)
+                self._executeAction(action)
+        finally:
+            logInfo("Final belief map:")
+            if self._maze is not None:
+                self._maze.printAsciiMap()
+                if self._path:
+                    logInfo(f"Path traversed ({len(self._path)} steps): {self._path}")
+            if EXPORT_FINAL_MAP_TO_PNG:
+                os.makedirs(MAP_EXPORT_DIR, exist_ok=True)
+                export_belief_map_png(
+                    self._maze,
+                    self._path,
+                    os.path.join(MAP_EXPORT_DIR, self._buildFinalMapFilename()),
+                    status=finalStatus or "terminated",
+                )
+
+            # Give the supervisor a chance to receive the final status message
+            if finalStatus is not None and self._statusEmitter is not None:
+                for _ in range(3):
+                    if self._robot.step(self._timeStep) == -1:
+                        break
 
     """
     Wait for the supervisor to signal that the world is ready and return the
@@ -380,6 +398,7 @@ class MazeController:
         )
         cellSizeMeters = float(config["cell_size"])
         seed = config.get("seed", None)
+        self._seed = int(seed) if seed is not None else DEFAULT_SEED
         startDirValue = config.get("startDir", self._startDirection)
         startDirection = self._directionFromString(startDirValue)
 
@@ -393,11 +412,13 @@ class MazeController:
             )
             self._planner = DEFAULT_PLANNER
         perceptionMode = str(config.get("perception", DEFAULT_PERCEPTION_MODE)).lower()
+        self._perceptionMode = perceptionMode
         if perceptionMode not in ("lidar", "ir"):
             logWarn(
                 f"[maze_solver] Unknown perception mode '{perceptionMode}', defaulting to {DEFAULT_PERCEPTION_MODE}."
             )
             perceptionMode = DEFAULT_PERCEPTION_MODE
+            self._perceptionMode = perceptionMode
 
         self._robotFacade = EPuckFacade(
             robot=self._robot,
@@ -1004,6 +1025,24 @@ class MazeController:
             # 180 degree turn: choose one direction (right here), the second turn
             # will be planned on the next call to _decideNextAction.
             return MotionAction.TURN_RIGHT_90
+
+    """Construct a descriptive filename for the final map export."""
+
+    def _buildFinalMapFilename(self) -> str:
+
+        seed_part = f"seed{self._seed}"
+        if self._maze is not None:
+            r, c = self._maze.getShape()
+        else:
+            r, c = DEFAULT_ROWS, DEFAULT_COLS
+        shape_part = f"{r}x{c}"
+        planner_part = self._planner
+        perception_part = self._perceptionMode
+        parts = [seed_part, shape_part, planner_part]
+        if self._planner == "a_star":
+            parts.append(f"unk{str(A_STAR_UNKNOWN_COST).replace('.', 'p')}")
+        parts.append(perception_part)
+        return f"map_{'_'.join(parts)}.png"
 
 
 """
