@@ -827,6 +827,7 @@ class EPuckFacade(RobotFacade):
         self._lastActionResult = result
         self._state = RobotState.IDLE
         self._currentAction = None
+        self._turnSign = None
         self._leftMotor.setVelocity(0.0)
         self._rightMotor.setVelocity(0.0)
 

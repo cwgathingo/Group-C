@@ -21,6 +21,8 @@ from maze_shared.maze_config import (
     DEFAULT_PLANNER,
     DEFAULT_PERCEPTION_MODE,
     DEFAULT_START,
+    EXPORT_FINAL_MAP_FILENAME,
+    EXPORT_FINAL_MAP_TO_PNG,
     A_STAR_UNKNOWN_COST,
     A_STAR_TRACE,
     MAZE_ORIGIN,
@@ -125,6 +127,13 @@ class MazeController:
         # Track the high-level action requested for execution.
         # None = no pending action (idle from planning perspective).
         self._pendingAction: Optional[MotionAction] = None
+
+        # Planning cache to avoid re-tie-breaking when nothing changed.
+        self._cachedNextDir: Optional[Direction] = None
+        self._cachedPlanVersion: int = -1
+
+        # Robot path history (sequence of visited cells).
+        self._path: List[Cell] = []
 
     """
     Main control loop.
@@ -399,6 +408,9 @@ class MazeController:
             perceptionMode=perceptionMode,
         )
 
+        # Seed path with start cell
+        self._path = [startCell]
+
         print(
             "[maze_solver] runtime config applied: "
             f"rows={rows}, cols={cols}, start={startCell}, goal={goalCell}, "
@@ -567,28 +579,48 @@ class MazeController:
             logWarn("[maze_solver] Planner cannot run; maze or facade not initialised.")
             return None
 
+        mazeVersion = self._maze.getVersion()
+        # Reuse cached plan when nothing changed
+        if self._cachedNextDir is not None and self._cachedPlanVersion == mazeVersion:
+            passageState = self._maze.getPassage(self._currentCell, self._cachedNextDir)
+            if passageState != PassageState.BLOCKED:
+                return self._directionToAction(self._cachedNextDir)
+
         if self._planner == "a_star":
-            return self._decideNextActionAStar()
-        # default to wavefront to preserve existing behaviour when unspecified
-        return self._decideNextActionWavefront()
+            nextDir, nextCell = self._decideNextActionAStar()
+        else:
+            nextDir, nextCell = self._decideNextActionWavefront()
+
+        if nextDir is None or nextCell is None:
+            return None
+
+        # Cache plan context
+        self._cachedNextDir = nextDir
+        self._cachedPlanVersion = mazeVersion
+
+        return self._directionToAction(nextDir)
+
+    def _clearPlanCache(self) -> None:
+        """Reset any cached next direction/version for planning reuse."""
+        self._cachedNextDir = None
+        self._cachedPlanVersion = -1
 
     """
-    A* planner wrapper that converts the next cell along the planned path
-    into a MotionAction.
+    A* planner wrapper that returns the next direction and cell along the path.
 
-    @return Next motion action, or None if no path is available.
+    @return Tuple (nextDir, nextCell) or (None, None) if no path is available.
     """
 
-    def _decideNextActionAStar(self) -> Optional[MotionAction]:
+    def _decideNextActionAStar(self) -> Tuple[Optional[Direction], Optional[Cell]]:
         path = self._planPathAStar(self._currentCell, self._maze.getGoal())
         if path is None:
             logWarn("A* could not find a path with the current belief; stopping.")
-            return None
+            return None, None
 
         # The current cell will be the first entry; take the next step.
         if len(path) < 2:
             logDebug("[maze_solver] A* returned a trivial path; nothing to do.")
-            return None
+            return None, None
 
         nextCell = path[1]
         nextDir = self._directionBetweenCells(self._currentCell, nextCell)
@@ -596,12 +628,12 @@ class MazeController:
             logWarn(
                 f"[maze_solver] A* produced non-adjacent step from {self._currentCell} to {nextCell}; aborting."
             )
-            return None
+            return None, None
 
-        return self._directionToAction(nextDir)
+        return nextDir, nextCell
 
     """
-    Decide the next motion action using a wavefront (NF1/grassfire) planner.
+    Decide the next direction using a wavefront (NF1/grassfire) planner.
 
     A fresh wavefront distance field is computed from the goal. From the
     current cell, all non-BLOCKED neighbours are examined and those with
@@ -612,11 +644,11 @@ class MazeController:
     Otherwise, the preferred neighbour direction is chosen according to
     the current heading and converted into a MotionAction.
 
-    @return Next motion action, or None if no step towards the goal is
+    @return Tuple (nextDir, nextCell) or (None, None) if no step towards the goal is
              available under the current belief.
     """
 
-    def _decideNextActionWavefront(self) -> Optional[MotionAction]:
+    def _decideNextActionWavefront(self) -> Tuple[Optional[Direction], Optional[Cell]]:
         # 1. Recompute and print wavefront
         wfm = self._computeWavefront()
         if IS_DEBUG:
@@ -653,13 +685,15 @@ class MazeController:
             logWarn(
                 "No neighbour with wavefront value current-1; cannot step closer to goal."
             )
-            return None
+            return None, None
 
         # 4. Pick preferred neighbour direction based on current headin
         nextDir = self._choosePreferredDirection(candidateDirs)
+        nextCell = self._maze.getNeighbour(self._currentCell, nextDir)
+        if nextCell is None:
+            return None, None
 
-        # 5. Convert desired direction into a MotionAction
-        return self._directionToAction(nextDir)
+        return nextDir, nextCell
 
     """
     Plan a path from start to goal using A* search on the current maze belief.
@@ -862,6 +896,7 @@ class MazeController:
             self._stopMotors()
             # For now, exit the controller on any failure.
             # (Smarter recovery can be added later.)
+            self._clearPlanCache()
             self._pendingAction = None
             # Force termination by exiting run() main loop:
             # simplest is to raise SystemExit.
@@ -873,6 +908,8 @@ class MazeController:
         if self._pendingAction == MotionAction.MOVE_FORWARD_ONE_CELL:
             self._currentCell = self._robotFacade.getCurrentCell()
             self._maze.markVisited(self._currentCell)
+            self._clearPlanCache()
+            self._path.append(self._currentCell)
 
             heading = self._robotFacade.getHeadingDirection()
             opposite = self._maze.getOppositeDirection(heading)

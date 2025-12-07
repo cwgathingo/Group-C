@@ -27,6 +27,11 @@ DEFAULT_PERCEPTION_MODE: str = "lidar"
 # Enable verbose A* tracing when LOG_LEVEL is DEBUG (can be noisy).
 A_STAR_TRACE: bool = False
 
+# Export the final belief map to an image at the end of the run.
+# Requires Pillow to write PNG; otherwise export is skipped with a warning.
+EXPORT_FINAL_MAP_TO_PNG: bool = False
+EXPORT_FINAL_MAP_FILENAME: str = "final_belief_map.png"
+
 """
 Return the world (x, y) coordinates of the centre of cell (0, 0),
 assuming the world origin (0, 0) is at the centre of the maze.

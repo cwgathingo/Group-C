@@ -73,6 +73,7 @@ class Maze:
         self._cols = cols
         self._start = start
         self._goal = goal
+        self._version: int = 0
 
         # Initialise visited[r][c] to track whether each cell has been explored.
         self._visited: List[List[bool]] = [
@@ -144,6 +145,15 @@ class Maze:
 
     def getGoal(self) -> Cell:
         return self._goal
+
+    """
+    Get the current map version. Increments occur only when the belief changes.
+
+    @return Integer version counter.
+    """
+
+    def getVersion(self) -> int:
+        return self._version
 
     """
     Check whether a cell lies within the maze boundaries.
@@ -284,6 +294,7 @@ class Maze:
         # Update the symmetric passage in the neighbour
         opposite = self.getOppositeDirection(direction)
         self._passages[nRow][nCol][opposite] = passageState
+        self._version += 1
 
     """
     Mark a cell as visited in the belief map.
@@ -293,7 +304,9 @@ class Maze:
 
     def markVisited(self, cell: Cell) -> None:
         (row, col) = cell
-        self._visited[row][col] = True
+        if not self._visited[row][col]:
+            self._visited[row][col] = True
+            self._version += 1
 
     # ---------- ASCII export ----------
 
