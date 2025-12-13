@@ -1,0 +1,65 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/gctronic/e-puck/protos/E-puck.proto"
+IMPORTABLE EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/apartment_structure/protos/Wall.proto"
+
+WorldInfo {
+}
+Viewpoint {
+  orientation -0.5773502691896258 0.5773502691896258 0.5773502691896258 2.0944
+  position -0.000913343549310806 -0.00036400526447675217 1.8127847029023054
+  follow "e-puck-maze"
+  followType "None"
+}
+TexturedBackground {
+}
+Robot {
+  children [
+    DEF TIME_DISPLAY Display {
+      name "TIME_DISPLAY"
+      width 300
+      height 60
+    }
+    Receiver {
+      name "status_receiver"
+      channel 1
+      baudRate 115200
+    }
+  ]
+  controller "maze_builder"
+  supervisor TRUE
+}
+DEF MAZE_ROBOT E-puck {
+  rotation 0 0 1 1.570510104157698
+  name "e-puck-maze"
+  controller "maze_solver"
+  turretSlot [
+    Lidar {
+      horizontalResolution 21
+      fieldOfView 3.14156
+      verticalFieldOfView 0.1
+      numberOfLayers 1
+    }
+    DistanceSensor {
+    }
+    Compass {
+    }
+    GPS {
+    }
+    Emitter {
+      name "status_emitter"
+      channel 1
+      baudRate 115200
+    }
+  ]
+}
+TexturedBackgroundLight {
+}
+RectangleArena {
+  floorSize 0.1 0.1
+  floorTileSize 0.1 0.1
+  wallHeight 0.001
+}
